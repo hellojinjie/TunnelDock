@@ -2,7 +2,7 @@
 
 > 原生 macOS OpenSSH 本地端口转发管理器。
 
-[查看英文说明](README.en.md)
+简体中文 | [English](README.en.md)
 
 TunnelDock 会从现有的 `~/.ssh/config` 发现可连接的主机，让你通过图形界面快速建立本地 SSH 隧道。它是系统 OpenSSH 的图形化管理工具，并不自行实现 SSH 协议。
 

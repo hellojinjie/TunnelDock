@@ -2,7 +2,7 @@
 
 > Native macOS management for OpenSSH local port forwards.
 
-[Read the Chinese documentation](README.md)
+[简体中文](README.md) | English
 
 TunnelDock discovers the connectable hosts in your existing `~/.ssh/config` and turns a remote port into a local SSH tunnel with a few clicks. It is a graphical companion to the system OpenSSH client—not a replacement for SSH.
 
