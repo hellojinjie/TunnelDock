@@ -6,6 +6,7 @@ let filter = CommandLine.arguments.dropFirst().first
 let tests = TunnelDefinitionTests.all
     + ForwardSpecificationTests.all
     + SSHConfigScannerTests.all
+    + SSHConfigAppenderTests.all
     + SSHIncludeResolverTests.all
     + SSHConfigWatcherTests.all
     + SSHHostResolverTests.all

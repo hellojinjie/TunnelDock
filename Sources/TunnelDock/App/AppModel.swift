@@ -39,6 +39,8 @@ final class AppModel: ObservableObject {
     }
 
     private let configURL: URL
+    private let configAppender = SSHConfigAppender()
+    private let configEditorOpener = SSHConfigEditorOpener()
     private let loader: SSHConfigLoader
     private let watcher = SSHConfigWatcher()
     private var watchTask: Task<Void, Never>?
@@ -83,6 +85,24 @@ final class AppModel: ObservableObject {
             replaceWatcher(with: loadedSnapshot.expanded)
         } catch {
             lifecycleError = error.localizedDescription
+        }
+    }
+
+    func addSSHHost(_ host: SSHHostConfiguration) async throws {
+        try configAppender.append(host, to: configURL)
+        await refreshSSHConfig()
+        selectedPaneID = host.alias
+    }
+
+    func openSSHConfigInDefaultEditor() {
+        Task {
+            do {
+                try configAppender.ensureConfigurationFile(at: configURL)
+                try await configEditorOpener.open(configURL: configURL)
+                lifecycleError = nil
+            } catch {
+                lifecycleError = error.localizedDescription
+            }
         }
     }
 

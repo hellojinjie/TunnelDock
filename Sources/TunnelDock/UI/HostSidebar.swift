@@ -6,6 +6,9 @@ struct HostSidebar: View {
     @ObservedObject var appState: AppState
     @Binding var selection: String?
     let refresh: () -> Void
+    let addHost: @MainActor (SSHHostConfiguration) async throws -> Void
+    let openConfigInEditor: () -> Void
+    @State private var isPresentingAddHost = false
 
     var body: some View {
         ScrollView {
@@ -60,10 +63,25 @@ struct HostSidebar: View {
             .padding(.vertical, 8)
         }
         .toolbar {
+            Button {
+                isPresentingAddHost = true
+            } label: {
+                Label("Quick Add SSH Host", systemImage: "plus")
+            }
+            .help("Quick Add SSH Host")
+
+            Button(action: openConfigInEditor) {
+                Label("Open SSH Config in Default Editor", systemImage: "square.and.pencil")
+            }
+            .help("Open ~/.ssh/config in Default Editor")
+
             Button(action: refresh) {
                 Label("Refresh SSH Config", systemImage: "arrow.clockwise")
             }
             .disabled(appState.isRefreshing)
+        }
+        .sheet(isPresented: $isPresentingAddHost) {
+            SSHHostQuickAddView(save: addHost)
         }
     }
 

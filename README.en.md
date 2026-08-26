@@ -11,6 +11,7 @@ TunnelDock discovers the connectable hosts in your existing `~/.ssh/config` and 
 ## Features
 
 - **SSH configuration discovery**: Reads `~/.ssh/config` and recursively follows `Include` directives, including relative paths and glob patterns. Only explicit, connectable host aliases are listed.
+- **Quick Add Host**: Append a new Host entry from the sidebar without modifying or deleting existing SSH configuration; `~/.ssh/config` can also be opened in the default editor.
 - **Quick Forward**: Select a host, enter a remote port, and connect. The default creates `127.0.0.1:<port>` → `<host>:127.0.0.1:<port>`.
 - **Recent Tunnels**: Successfully connected Quick Forwards are saved automatically. Rename, edit, reconnect, or remove them after they are disconnected.
 - **Independent connections**: Each tunnel uses its own OpenSSH control socket and lifecycle, so multiple forwards can run independently.
@@ -60,6 +61,8 @@ open .build/release/TunnelDock.app
 2. Open TunnelDock and select **gpu-server** from the sidebar.
 3. Under **Quick Forward**, enter the remote port (for example, `8888`) and click **Connect**.
 4. Use `http://127.0.0.1:8888` locally, or select **Open in Browser** after the tunnel is connected.
+
+Alternatively, use the **+** button in the host-list toolbar to append a Host from within the app. Only HostName is required; Host defaults to HostName, User defaults to the current login user, and Port defaults to 22. The adjacent edit button opens `~/.ssh/config` in macOS's default editor.
 
 Use **Advanced** to choose a different local port, remote host, local listening address, or the HTTP/HTTPS scheme used by **Open in Browser**. These settings do not change SSH forwarding semantics.
 

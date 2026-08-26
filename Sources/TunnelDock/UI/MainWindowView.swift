@@ -11,7 +11,9 @@ struct MainWindowView: View {
             HostSidebar(
                 appState: model.appState,
                 selection: $model.selectedPaneID,
-                refresh: { Task { await model.refreshSSHConfig() } }
+                refresh: { Task { await model.refreshSSHConfig() } },
+                addHost: { host in try await model.addSSHHost(host) },
+                openConfigInEditor: { model.openSSHConfigInDefaultEditor() }
             )
             .navigationSplitViewColumnWidth(min: 210, ideal: 240)
         } detail: {

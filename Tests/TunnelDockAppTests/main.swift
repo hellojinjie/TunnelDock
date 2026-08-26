@@ -6,6 +6,8 @@ let filter = CommandLine.arguments.dropFirst().first
 let tests = PlaceholderTests.all
     + AppStateTests.all
     + QuickForwardModelTests.all
+    + SSHHostDraftTests.all
+    + SSHConfigEditorOpenerTests.all
     + MenuBarModelTests.all
     + TunnelOverviewSortTests.all
     + AppTerminationCoordinatorTests.all
