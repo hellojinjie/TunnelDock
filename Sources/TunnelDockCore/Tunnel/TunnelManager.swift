@@ -336,16 +336,18 @@ public final class TunnelManager: ObservableObject {
             guard let handle = runtime.handle, let socket = runtime.socket else { return nil }
             return (runtime, handle, socket)
         }
-        for (runtime, _, socket) in active {
-            await processController.requestExit(alias: runtime.definition.hostAlias, socket: socket)
-        }
-        try? await tunnelClock.sleep(for: .seconds(2))
-        for (_, handle, _) in active where processController.isRunning(handle) {
-            processController.terminate(handle)
-        }
-        try? await tunnelClock.sleep(for: .seconds(1))
-        for (_, handle, _) in active where processController.isRunning(handle) {
-            processController.kill(handle)
+        if !active.isEmpty {
+            for (runtime, _, socket) in active {
+                await processController.requestExit(alias: runtime.definition.hostAlias, socket: socket)
+            }
+            try? await tunnelClock.sleep(for: .seconds(2))
+            for (_, handle, _) in active where processController.isRunning(handle) {
+                processController.terminate(handle)
+            }
+            try? await tunnelClock.sleep(for: .seconds(1))
+            for (_, handle, _) in active where processController.isRunning(handle) {
+                processController.kill(handle)
+            }
         }
         for runtime in storage.values {
             removeProcessResources(runtime)

@@ -131,10 +131,9 @@ enum TunnelManagerRecoveryTests {
                 try expectEqual(fixture.controller.killCount, 1)
             }
         },
-        TestCase("TunnelManagerRecoveryTests.shutdownRejectsConnectionsStartedDuringGracePeriod") {
+        TestCase("TunnelManagerRecoveryTests.idleShutdownRejectsNewConnectionsWithoutWaiting") {
             try await withRecoveryFixture(readiness: [true]) { fixture in
-                let shutdownTask = Task { await fixture.manager.shutdownAll() }
-                try await eventually { await fixture.clock.sleeps.count == 1 }
+                await fixture.manager.shutdownAll()
 
                 var observedError: TunnelManagerError?
                 do {
@@ -143,11 +142,7 @@ enum TunnelManagerRecoveryTests {
                     observedError = error
                 }
                 try expectEqual(observedError, .applicationShuttingDown)
-
-                await fixture.clock.resumeNext()
-                try await eventually { await fixture.clock.sleeps.count == 2 }
-                await fixture.clock.resumeNext()
-                await shutdownTask.value
+                try expectEqual(await fixture.clock.sleeps, [])
                 try expectEqual(fixture.controller.requestExitCount, 0)
             }
         },
