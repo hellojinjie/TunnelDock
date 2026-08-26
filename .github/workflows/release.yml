@@ -1,0 +1,42 @@
+name: Release TunnelDock
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: macos-15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: sh Scripts/test.sh
+
+      - name: Build application bundle
+        run: sh Scripts/package-app.sh
+
+      - name: Archive application bundle
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            .build/release/TunnelDock.app \
+            "TunnelDock-${TAG}.zip"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" "TunnelDock-${TAG}.zip" \
+            --title "TunnelDock ${TAG}" \
+            --generate-notes \
+            --verify-tag
