@@ -1,0 +1,18 @@
+{
+  "schemaVersion" : 1,
+  "tunnels" : [
+    {
+      "createdAt" : "2026-08-27T01:02:03Z",
+      "hostAlias" : "gpu",
+      "id" : "00000000-0000-4000-8000-000000000001",
+      "lastConnectedAt" : "2026-08-27T02:03:04Z",
+      "localAddress" : "127.0.0.1",
+      "localPort" : 18888,
+      "name" : "Jupyter",
+      "remoteHost" : "127.0.0.1",
+      "remotePort" : 8888,
+      "updatedAt" : "2026-08-27T02:03:04Z",
+      "webProtocol" : "https"
+    }
+  ]
+}
