@@ -22,28 +22,29 @@ type Window struct {
 	quick   *app.QuickForward
 	manager *tunnel.Manager
 
-	searchBox        *walk.LineEdit
-	currentHostList  *walk.ListBox
-	missingHostList  *walk.ListBox
-	detailTitle      *walk.Label
-	detailConnection *walk.Label
-	remotePort       *walk.LineEdit
-	localPort        *walk.LineEdit
-	remoteHost       *walk.LineEdit
-	localAddress     *walk.LineEdit
-	protocol         *walk.ComboBox
-	advanced         *walk.Composite
-	connectButton    *walk.PushButton
-	validation       *walk.Label
-	savedTunnelList  *walk.ListBox
-	temporaryList    *walk.ListBox
-	disconnectButton *walk.PushButton
-	saveButton       *walk.PushButton
-	browserButton    *walk.PushButton
-	deleteButton     *walk.PushButton
-	renameButton     *walk.PushButton
-	editButton       *walk.PushButton
-	logButton        *walk.PushButton
+	searchBox          *walk.LineEdit
+	currentHostList    *walk.ListBox
+	missingHostList    *walk.ListBox
+	detailTitle        *walk.Label
+	detailConnection   *walk.Label
+	remotePort         *walk.LineEdit
+	localPort          *walk.LineEdit
+	remoteHost         *walk.LineEdit
+	localAddress       *walk.LineEdit
+	protocol           *walk.ComboBox
+	advanced           *walk.Composite
+	connectButton      *walk.PushButton
+	validation         *walk.Label
+	savedTunnelList    *walk.ListBox
+	temporaryList      *walk.ListBox
+	connectSavedButton *walk.PushButton
+	disconnectButton   *walk.PushButton
+	saveButton         *walk.PushButton
+	browserButton      *walk.PushButton
+	deleteButton       *walk.PushButton
+	renameButton       *walk.PushButton
+	editButton         *walk.PushButton
+	logButton          *walk.PushButton
 
 	currentHosts      []model.SSHHost
 	missingHosts      []model.SSHHost
@@ -106,6 +107,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 							Label{Text: "Temporary Tunnels"},
 							ListBox{AssignTo: &window.temporaryList, MinSize: Size{Width: 0, Height: 70}, OnCurrentIndexChanged: window.onTemporaryTunnelSelected},
 							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
+								PushButton{AssignTo: &window.connectSavedButton, Text: "Connect", OnClicked: window.onConnectSaved},
 								PushButton{AssignTo: &window.disconnectButton, Text: "Disconnect", OnClicked: window.onDisconnect},
 								PushButton{AssignTo: &window.saveButton, Text: "Save", OnClicked: window.onSaveTemporary},
 								PushButton{AssignTo: &window.browserButton, Text: "Open in Browser", OnClicked: window.onOpenBrowser},
@@ -151,6 +153,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 		return nil, err
 	}
 	window.connectButton.SetEnabled(false)
+	window.connectSavedButton.SetEnabled(false)
 	window.disconnectButton.SetEnabled(false)
 	window.saveButton.SetEnabled(false)
 	window.browserButton.SetEnabled(false)
@@ -296,6 +299,7 @@ func (w *Window) onSavedTunnelSelected() {
 		return
 	}
 	w.selectedTunnelID, w.selectedTemporary = saved[index].ID, false
+	w.connectSavedButton.SetEnabled(saved[index].State == model.StateDisconnected)
 	w.disconnectButton.SetEnabled(saved[index].State != model.StateDisconnected)
 	w.saveButton.SetEnabled(false)
 	w.browserButton.SetEnabled(true)
@@ -312,6 +316,7 @@ func (w *Window) onTemporaryTunnelSelected() {
 		return
 	}
 	w.selectedTunnelID, w.selectedTemporary = temporary[index].ID, true
+	w.connectSavedButton.SetEnabled(false)
 	w.disconnectButton.SetEnabled(temporary[index].State != model.StateDisconnected)
 	w.saveButton.SetEnabled(true)
 	w.browserButton.SetEnabled(true)
@@ -327,6 +332,23 @@ func (w *Window) onDisconnect() {
 	}
 	_ = w.manager.Disconnect(w.selectedTunnelID)
 	_ = w.refreshTunnels()
+}
+
+func (w *Window) onConnectSaved() {
+	if w.manager == nil || w.selectedTemporary || w.selectedTunnelID == "" {
+		return
+	}
+	id := w.selectedTunnelID
+	go func() {
+		err := w.manager.ConnectSaved(context.Background(), id)
+		walk.App().Synchronize(func() {
+			if err != nil {
+				_ = w.validation.SetText(err.Error())
+			} else {
+				_ = w.refreshTunnels()
+			}
+		})
+	}()
 }
 
 func (w *Window) onSaveTemporary() {
