@@ -12,6 +12,29 @@ type TunnelRows struct {
 	Temporary []string
 }
 
+// TunnelsForHost returns the manager's stable order restricted to the current
+// host pane, matching the focused, host-first interaction used by the app.
+func TunnelsForHost(runtimes []model.TunnelRuntime, alias string) []model.TunnelRuntime {
+	if alias == "" {
+		return nil
+	}
+	filtered := make([]model.TunnelRuntime, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime.Definition.HostAlias == alias {
+			filtered = append(filtered, runtime)
+		}
+	}
+	return filtered
+}
+
+func TunnelRowTexts(runtimes []model.TunnelRuntime) []string {
+	rows := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		rows = append(rows, fmt.Sprintf("%s — %s", runtime.DisplayName(), tunnelStateText(runtime.State)))
+	}
+	return rows
+}
+
 func savedSnapshots(manager *tunnel.Manager) []model.TunnelRuntime {
 	if manager == nil {
 		return nil

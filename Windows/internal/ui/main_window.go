@@ -35,21 +35,17 @@ type Window struct {
 	advanced           *walk.Composite
 	connectButton      *walk.PushButton
 	validation         *walk.Label
-	savedTunnelList    *walk.ListBox
-	temporaryList      *walk.ListBox
-	connectSavedButton *walk.PushButton
-	disconnectButton   *walk.PushButton
-	saveButton         *walk.PushButton
+	recentTunnelList   *walk.ListBox
+	noTunnelsLabel     *walk.Label
+	tunnelActionButton *walk.PushButton
 	browserButton      *walk.PushButton
-	deleteButton       *walk.PushButton
-	renameButton       *walk.PushButton
-	editButton         *walk.PushButton
-	logButton          *walk.PushButton
+	moreButton         *walk.PushButton
 	settingsButton     *walk.PushButton
 	settingsAction     func()
 
 	currentHosts      []model.SSHHost
 	missingHosts      []model.SSHHost
+	visibleTunnels    []model.TunnelRuntime
 	selectedHost      *model.SSHHost
 	syncingForm       bool
 	selectedTunnelID  string
@@ -100,31 +96,26 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 					Composite{
 						Layout: VBox{Margins: Margins{Left: 20, Top: 18, Right: 20, Bottom: 20}, Spacing: 10},
 						Children: []Widget{
-							Label{Text: "Host"},
 							Label{AssignTo: &window.detailTitle, Text: "Select an SSH Host"},
-							Label{Text: "Effective connection"},
 							Label{AssignTo: &window.detailConnection, Text: "Choose a host from the sidebar."},
-							Label{Text: "Saved Tunnels"},
-							ListBox{AssignTo: &window.savedTunnelList, MinSize: Size{Width: 0, Height: 90}, OnCurrentIndexChanged: window.onSavedTunnelSelected},
-							Label{Text: "Temporary Tunnels"},
-							ListBox{AssignTo: &window.temporaryList, MinSize: Size{Width: 0, Height: 70}, OnCurrentIndexChanged: window.onTemporaryTunnelSelected},
+							Label{Text: "Recent Tunnels"},
+							Label{AssignTo: &window.noTunnelsLabel, Text: "No tunnels for this host yet."},
+							ListBox{AssignTo: &window.recentTunnelList, MinSize: Size{Width: 0, Height: 150}, OnCurrentIndexChanged: window.onRecentTunnelSelected},
 							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
-								PushButton{AssignTo: &window.connectSavedButton, Text: "Connect", OnClicked: window.onConnectSaved},
-								PushButton{AssignTo: &window.disconnectButton, Text: "Disconnect", OnClicked: window.onDisconnect},
-								PushButton{AssignTo: &window.saveButton, Text: "Save", OnClicked: window.onSaveTemporary},
+								PushButton{AssignTo: &window.tunnelActionButton, Text: "Connect", OnClicked: window.onTunnelAction},
 								PushButton{AssignTo: &window.browserButton, Text: "Open in Browser", OnClicked: window.onOpenBrowser},
-								PushButton{AssignTo: &window.deleteButton, Text: "Delete", OnClicked: window.onDelete},
-								PushButton{AssignTo: &window.renameButton, Text: "Rename", OnClicked: window.onRename},
-								PushButton{AssignTo: &window.editButton, Text: "Edit", OnClicked: window.onEdit},
-								PushButton{AssignTo: &window.logButton, Text: "View Log", OnClicked: window.onViewLog},
-								PushButton{AssignTo: &window.settingsButton, Text: "Settings", OnClicked: window.onSettings},
+								PushButton{AssignTo: &window.moreButton, Text: "More…", OnClicked: window.onMore},
 							}},
 							Label{Text: "Quick Forward"},
 							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
 								LineEdit{AssignTo: &window.remotePort, CueBanner: "Remote Port", StretchFactor: 1, OnTextChanged: window.onRemotePortChanged},
 								PushButton{AssignTo: &window.connectButton, Text: "Connect", OnClicked: window.onConnect},
 							}},
-							PushButton{Text: "Advanced", OnClicked: window.toggleAdvanced},
+							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
+								PushButton{Text: "Advanced", OnClicked: window.toggleAdvanced},
+								HSpacer{},
+								PushButton{AssignTo: &window.settingsButton, Text: "Settings", OnClicked: window.onSettings},
+							}},
 							Composite{AssignTo: &window.advanced, Layout: Grid{Columns: 2, Spacing: 8}, Children: []Widget{
 								Label{Text: "Local Port"}, LineEdit{AssignTo: &window.localPort, OnTextChanged: window.onLocalPortChanged},
 								Label{Text: "Remote Host"}, LineEdit{AssignTo: &window.remoteHost, Text: window.quick.RemoteHost, OnTextChanged: window.onRemoteHostChanged},
@@ -156,14 +147,9 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 		return nil, err
 	}
 	window.connectButton.SetEnabled(false)
-	window.connectSavedButton.SetEnabled(false)
-	window.disconnectButton.SetEnabled(false)
-	window.saveButton.SetEnabled(false)
+	window.tunnelActionButton.SetEnabled(false)
 	window.browserButton.SetEnabled(false)
-	window.deleteButton.SetEnabled(false)
-	window.renameButton.SetEnabled(false)
-	window.editButton.SetEnabled(false)
-	window.logButton.SetEnabled(false)
+	window.moreButton.SetEnabled(false)
 	window.settingsButton.SetEnabled(false)
 	return window, nil
 }
@@ -230,11 +216,13 @@ func (w *Window) selectHost(host *model.SSHHost) {
 	if host == nil {
 		w.selectedHost = nil
 		w.connectButton.SetEnabled(false)
+		_ = w.refreshTunnels()
 		return
 	}
 	selected := *host
 	w.selectedHost = &selected
 	w.connectButton.SetEnabled(host.Availability == model.HostAvailable && w.manager != nil)
+	_ = w.refreshTunnels()
 }
 
 func (w *Window) onRemotePortChanged() { w.quick.SetRemotePort(w.remotePort.Text()); w.syncLocalPort() }
@@ -293,60 +281,59 @@ func (w *Window) onConnect() {
 }
 
 func (w *Window) refreshTunnels() error {
+	w.selectedTunnelID = ""
+	w.selectedTemporary = false
+	_ = w.tunnelActionButton.SetText("Connect")
+	w.tunnelActionButton.SetEnabled(false)
+	w.browserButton.SetEnabled(false)
+	w.moreButton.SetEnabled(false)
 	if w.manager == nil {
-		return w.savedTunnelList.SetModel([]string{})
+		w.visibleTunnels = nil
+		w.noTunnelsLabel.SetVisible(true)
+		return w.recentTunnelList.SetModel([]string{})
 	}
-	rows := TunnelListRows(w.manager.Snapshots())
-	if err := w.savedTunnelList.SetModel(rows.Saved); err != nil {
-		return err
+	alias := ""
+	if w.selectedHost != nil {
+		alias = w.selectedHost.Alias
 	}
-	return w.temporaryList.SetModel(rows.Temporary)
+	w.visibleTunnels = TunnelsForHost(w.manager.Snapshots(), alias)
+	w.noTunnelsLabel.SetVisible(alias != "" && len(w.visibleTunnels) == 0)
+	return w.recentTunnelList.SetModel(TunnelRowTexts(w.visibleTunnels))
 }
 
-func (w *Window) onSavedTunnelSelected() {
-	index := w.savedTunnelList.CurrentIndex()
-	saved := savedSnapshots(w.manager)
-	if index < 0 || index >= len(saved) {
+func (w *Window) onRecentTunnelSelected() {
+	index := w.recentTunnelList.CurrentIndex()
+	if index < 0 || index >= len(w.visibleTunnels) {
 		return
 	}
-	w.selectedTunnelID, w.selectedTemporary = saved[index].ID, false
-	w.connectSavedButton.SetEnabled(saved[index].State == model.StateDisconnected)
-	w.disconnectButton.SetEnabled(saved[index].State != model.StateDisconnected)
-	w.saveButton.SetEnabled(false)
-	w.browserButton.SetEnabled(true)
-	w.deleteButton.SetEnabled(saved[index].State == model.StateDisconnected)
-	w.renameButton.SetEnabled(true)
-	w.editButton.SetEnabled(saved[index].State == model.StateDisconnected)
-	w.logButton.SetEnabled(true)
-}
-
-func (w *Window) onTemporaryTunnelSelected() {
-	index := w.temporaryList.CurrentIndex()
-	temporary := temporarySnapshots(w.manager)
-	if index < 0 || index >= len(temporary) {
-		return
+	runtime := w.visibleTunnels[index]
+	w.selectedTunnelID, w.selectedTemporary = runtime.ID, runtime.Temporary
+	if runtime.State == model.StateDisconnected {
+		_ = w.tunnelActionButton.SetText("Connect")
+		w.tunnelActionButton.SetEnabled(!runtime.Temporary)
+	} else {
+		_ = w.tunnelActionButton.SetText("Disconnect")
+		w.tunnelActionButton.SetEnabled(true)
 	}
-	w.selectedTunnelID, w.selectedTemporary = temporary[index].ID, true
-	w.connectSavedButton.SetEnabled(false)
-	w.disconnectButton.SetEnabled(temporary[index].State != model.StateDisconnected)
-	w.saveButton.SetEnabled(true)
-	w.browserButton.SetEnabled(true)
-	w.deleteButton.SetEnabled(false)
-	w.renameButton.SetEnabled(false)
-	w.editButton.SetEnabled(false)
-	w.logButton.SetEnabled(true)
+	w.browserButton.SetEnabled(runtime.State == model.StateConnected)
+	w.moreButton.SetEnabled(true)
 }
 
-func (w *Window) onDisconnect() {
-	if w.manager == nil || w.selectedTunnelID == "" {
-		return
-	}
-	_ = w.manager.Disconnect(w.selectedTunnelID)
-	_ = w.refreshTunnels()
-}
-
-func (w *Window) onConnectSaved() {
+func (w *Window) onTunnelAction() {
 	if w.manager == nil || w.selectedTemporary || w.selectedTunnelID == "" {
+		if w.manager != nil && w.selectedTemporary && w.selectedTunnelID != "" {
+			_ = w.manager.Disconnect(w.selectedTunnelID)
+			_ = w.refreshTunnels()
+		}
+		return
+	}
+	runtime, exists := w.manager.Snapshot(w.selectedTunnelID)
+	if !exists {
+		return
+	}
+	if runtime.State != model.StateDisconnected {
+		_ = w.manager.Disconnect(w.selectedTunnelID)
+		_ = w.refreshTunnels()
 		return
 	}
 	id := w.selectedTunnelID
@@ -398,7 +385,6 @@ func (w *Window) onDelete() {
 		return
 	}
 	w.selectedTunnelID = ""
-	w.deleteButton.SetEnabled(false)
 	_ = w.refreshTunnels()
 }
 
@@ -458,6 +444,33 @@ func (w *Window) onViewLog() {
 	}
 	if err := ShowTunnelLog(w, w.manager, w.selectedTunnelID); err != nil {
 		_ = w.validation.SetText(err.Error())
+	}
+}
+
+func (w *Window) onMore() {
+	if w.manager == nil || w.selectedTunnelID == "" {
+		return
+	}
+	runtime, exists := w.manager.Snapshot(w.selectedTunnelID)
+	if !exists {
+		return
+	}
+	action, err := promptTunnelMore(w, runtime)
+	if err != nil {
+		_ = w.validation.SetText(err.Error())
+		return
+	}
+	switch action {
+	case tunnelMoreSave:
+		w.onSaveTemporary()
+	case tunnelMoreRename:
+		w.onRename()
+	case tunnelMoreEdit:
+		w.onEdit()
+	case tunnelMoreDelete:
+		w.onDelete()
+	case tunnelMoreLog:
+		w.onViewLog()
 	}
 }
 

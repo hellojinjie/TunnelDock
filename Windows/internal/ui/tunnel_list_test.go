@@ -15,3 +15,15 @@ func TestTunnelListRowsSeparatesSavedAndTemporaryTunnels(t *testing.T) {
 		t.Fatalf("TunnelListRows() = %#v", rows)
 	}
 }
+
+func TestTunnelsForHostKeepsOnlySelectedHostRuntimes(t *testing.T) {
+	runtimes := []model.TunnelRuntime{
+		{ID: "one", Definition: model.TunnelDefinition{HostAlias: "gpu"}},
+		{ID: "two", Definition: model.TunnelDefinition{HostAlias: "nas"}},
+		{ID: "three", Definition: model.TunnelDefinition{HostAlias: "gpu"}, Temporary: true},
+	}
+	selected := TunnelsForHost(runtimes, "gpu")
+	if len(selected) != 2 || selected[0].ID != "one" || selected[1].ID != "three" {
+		t.Fatalf("TunnelsForHost() = %#v", selected)
+	}
+}
