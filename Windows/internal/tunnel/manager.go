@@ -539,6 +539,43 @@ func (m *Manager) Rename(id, name string) error {
 	return nil
 }
 
+// UpdateSavedDefinition changes the forwarding parameters for a saved tunnel
+// only while it is disconnected. Runtime identity and creation time remain
+// manager-owned so an edit cannot replace a running tunnel's identity.
+func (m *Manager) UpdateSavedDefinition(id string, definition model.TunnelDefinition) error {
+	m.mu.Lock()
+	runtime, exists := m.runtimes[id]
+	if !exists || runtime.temporary {
+		m.mu.Unlock()
+		return ErrTunnelNotFound
+	}
+	if runtime.state != model.StateDisconnected {
+		m.mu.Unlock()
+		return ErrTunnelRunning
+	}
+	updated := definition
+	updated.ID = id
+	updated.CreatedAt = runtime.definition.CreatedAt
+	updated.LastConnectedAt = runtime.definition.LastConnectedAt
+	updated.UpdatedAt = m.now()
+	if err := updated.Validate(); err != nil {
+		m.mu.Unlock()
+		return err
+	}
+	previous := runtime.definition
+	runtime.definition = updated
+	m.mu.Unlock()
+	if err := m.persistDefinitions(); err != nil {
+		m.mu.Lock()
+		if current, ok := m.runtimes[id]; ok {
+			current.definition = previous
+		}
+		m.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
 // Delete removes a disconnected saved tunnel after the UI has confirmed the
 // action. Temporary tunnels are removed by Disconnect instead.
 func (m *Manager) Delete(id string) error {

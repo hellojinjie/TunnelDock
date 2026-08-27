@@ -212,6 +212,34 @@ func TestManagerShutdownDisconnectsRunningTunnelsAndRejectsNewConnections(t *tes
 	}
 }
 
+func TestManagerUpdatesSavedDefinitionOnlyWhenDisconnected(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
+	updated := managerDefinition("ignored", "gpu", 9443)
+	updated.RemoteHost = "service.internal"
+	updated.LocalAddress = "127.0.0.1"
+	updated.WebProtocol = model.TunnelProtocolHTTPS
+
+	if err := fixture.manager.ConnectSaved(context.Background(), "saved-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.UpdateSavedDefinition("saved-1", updated); !errors.Is(err, ErrTunnelRunning) {
+		t.Fatalf("UpdateSavedDefinition() while running = %v, want ErrTunnelRunning", err)
+	}
+	if err := fixture.manager.Disconnect("saved-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.UpdateSavedDefinition("saved-1", updated); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, ok := fixture.manager.Snapshot("saved-1")
+	if !ok {
+		t.Fatal("updated snapshot is missing")
+	}
+	if snapshot.Definition.ID != "saved-1" || snapshot.Definition.RemoteHost != "service.internal" || snapshot.Definition.LocalPort != 9443 || snapshot.Definition.WebProtocol != model.TunnelProtocolHTTPS {
+		t.Fatalf("updated snapshot = %#v", snapshot.Definition)
+	}
+}
+
 func TestManagerMultipleTunnelsAreIndependentAndStderrDoesNotFailTransport(t *testing.T) {
 	definitions := []model.TunnelDefinition{managerDefinition("one", "gpu", 9101), managerDefinition("two", "gpu", 9102)}
 	fixture := newManagerFixture(t, definitions, []error{nil, nil})
