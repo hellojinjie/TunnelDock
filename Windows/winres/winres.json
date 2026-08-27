@@ -14,7 +14,7 @@
           "version": "1.0.0.0"
         },
         "description": "TunnelDock for Windows",
-        "minimum-os": "win7",
+        "minimum-os": "win10",
         "execution-level": "as invoker",
         "ui-access": false,
         "auto-elevate": false,
