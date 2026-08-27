@@ -27,3 +27,14 @@ func TestTunnelsForHostKeepsOnlySelectedHostRuntimes(t *testing.T) {
 		t.Fatalf("TunnelsForHost() = %#v", selected)
 	}
 }
+
+func TestTunnelTableRowsShowForwardAndState(t *testing.T) {
+	rows := TunnelTableRows([]model.TunnelRuntime{{
+		ID: "one", Definition: model.TunnelDefinition{HostAlias: "gpu", Name: stringPtr("Jupyter"), LocalAddress: "127.0.0.1", LocalPort: 8888, RemoteHost: "127.0.0.1", RemotePort: 8888}, State: model.StateConnected,
+	}})
+	if len(rows) != 1 || rows[0].RuntimeID != "one" || rows[0].Name != "Jupyter" || rows[0].Forward != "127.0.0.1:8888 → 127.0.0.1:8888" || rows[0].Status != "Connected" {
+		t.Fatalf("TunnelTableRows() = %#v", rows)
+	}
+}
+
+func stringPtr(value string) *string { return &value }

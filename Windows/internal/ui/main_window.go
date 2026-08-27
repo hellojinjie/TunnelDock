@@ -23,10 +23,10 @@ type Window struct {
 	manager *tunnel.Manager
 
 	searchBox          *walk.LineEdit
-	currentHostList    *walk.ListBox
-	missingHostList    *walk.ListBox
+	currentHostList    *walk.TableView
 	detailTitle        *walk.Label
 	detailConnection   *walk.Label
+	detailStatus       *walk.Label
 	remotePort         *walk.LineEdit
 	localPort          *walk.LineEdit
 	remoteHost         *walk.LineEdit
@@ -35,7 +35,7 @@ type Window struct {
 	advanced           *walk.Composite
 	connectButton      *walk.PushButton
 	validation         *walk.Label
-	recentTunnelList   *walk.ListBox
+	recentTunnelList   *walk.TableView
 	noTunnelsLabel     *walk.Label
 	tunnelActionButton *walk.PushButton
 	browserButton      *walk.PushButton
@@ -44,8 +44,9 @@ type Window struct {
 	settingsAction     func()
 
 	currentHosts      []model.SSHHost
-	missingHosts      []model.SSHHost
+	hostRows          []*HostTableRow
 	visibleTunnels    []model.TunnelRuntime
+	tunnelRows        []*TunnelTableRow
 	selectedHost      *model.SSHHost
 	syncingForm       bool
 	selectedTunnelID  string
@@ -79,17 +80,19 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 								CueBanner:     "Search SSH hosts",
 								OnTextChanged: window.onSearchChanged,
 							},
-							Label{Text: "SSH Hosts"},
-							ListBox{
-								AssignTo:              &window.currentHostList,
+							TableView{
+								AssignTo:            &window.currentHostList,
+								HeaderHidden:        true,
+								AlternatingRowBG:    true,
+								LastColumnStretched: true,
+								Columns: []TableViewColumn{
+									{DataMember: "Alias", Width: 110},
+									{DataMember: "Connection", Width: 160},
+									{DataMember: "Status", Width: 90},
+								},
+								Model:                 window.hostRows,
 								StretchFactor:         1,
 								OnCurrentIndexChanged: window.onCurrentHostSelected,
-							},
-							Label{Text: "Missing Hosts"},
-							ListBox{
-								AssignTo:              &window.missingHostList,
-								MinSize:               Size{Width: 0, Height: 90},
-								OnCurrentIndexChanged: window.onMissingHostSelected,
 							},
 						},
 					},
@@ -98,9 +101,23 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 						Children: []Widget{
 							Label{AssignTo: &window.detailTitle, Text: "Select an SSH Host"},
 							Label{AssignTo: &window.detailConnection, Text: "Choose a host from the sidebar."},
+							Label{AssignTo: &window.detailStatus},
 							Label{Text: "Recent Tunnels"},
 							Label{AssignTo: &window.noTunnelsLabel, Text: "No tunnels for this host yet."},
-							ListBox{AssignTo: &window.recentTunnelList, MinSize: Size{Width: 0, Height: 150}, OnCurrentIndexChanged: window.onRecentTunnelSelected},
+							TableView{
+								AssignTo:            &window.recentTunnelList,
+								HeaderHidden:        true,
+								AlternatingRowBG:    true,
+								LastColumnStretched: true,
+								MinSize:             Size{Width: 0, Height: 150},
+								Columns: []TableViewColumn{
+									{DataMember: "Name", Width: 120},
+									{DataMember: "Forward", Width: 260},
+									{DataMember: "Status", Width: 100},
+								},
+								Model:                 window.tunnelRows,
+								OnCurrentIndexChanged: window.onRecentTunnelSelected,
+							},
 							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
 								PushButton{AssignTo: &window.tunnelActionButton, Text: "Connect", OnClicked: window.onTunnelAction},
 								PushButton{AssignTo: &window.browserButton, Text: "Open in Browser", OnClicked: window.onOpenBrowser},
@@ -189,20 +206,10 @@ func (w *Window) onCurrentHostSelected() {
 	w.selectHost(&w.currentHosts[index])
 }
 
-func (w *Window) onMissingHostSelected() {
-	index := w.missingHostList.CurrentIndex()
-	if index < 0 || index >= len(w.missingHosts) {
-		return
-	}
-	w.selectHost(&w.missingHosts[index])
-}
-
 func (w *Window) refreshHosts() error {
-	w.currentHosts, w.missingHosts = PartitionHosts(w.model.FilteredHosts())
-	if err := w.currentHostList.SetModel(hostAliases(w.currentHosts)); err != nil {
-		return err
-	}
-	if err := w.missingHostList.SetModel(hostAliases(w.missingHosts)); err != nil {
+	w.currentHosts = w.model.FilteredHosts()
+	w.hostRows = HostTableRows(w.currentHosts)
+	if err := w.currentHostList.SetModel(w.hostRows); err != nil {
 		return err
 	}
 	w.selectHost(nil)
@@ -215,12 +222,18 @@ func (w *Window) selectHost(host *model.SSHHost) {
 	_ = w.detailConnection.SetText(detail.Connection)
 	if host == nil {
 		w.selectedHost = nil
+		_ = w.detailStatus.SetText("")
 		w.connectButton.SetEnabled(false)
 		_ = w.refreshTunnels()
 		return
 	}
 	selected := *host
 	w.selectedHost = &selected
+	status := hostAvailabilityText(host.Availability)
+	if host.Error != "" {
+		status += ": " + host.Error
+	}
+	_ = w.detailStatus.SetText(status)
 	w.connectButton.SetEnabled(host.Availability == model.HostAvailable && w.manager != nil)
 	_ = w.refreshTunnels()
 }
@@ -297,8 +310,9 @@ func (w *Window) refreshTunnels() error {
 		alias = w.selectedHost.Alias
 	}
 	w.visibleTunnels = TunnelsForHost(w.manager.Snapshots(), alias)
+	w.tunnelRows = TunnelTableRows(w.visibleTunnels)
 	w.noTunnelsLabel.SetVisible(alias != "" && len(w.visibleTunnels) == 0)
-	return w.recentTunnelList.SetModel(TunnelRowTexts(w.visibleTunnels))
+	return w.recentTunnelList.SetModel(w.tunnelRows)
 }
 
 func (w *Window) onRecentTunnelSelected() {
