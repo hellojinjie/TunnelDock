@@ -46,6 +46,7 @@ type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, executable string, args ...string) ([]byte, []byte, int, error) {
 	command := exec.CommandContext(ctx, executable, args...)
+	configureCommandForBackground(command)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	command.Stdout = &stdout
