@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -18,6 +19,15 @@ import (
 )
 
 func main() {
+	instance, err := app.AcquireSingleInstance("Local\\TunnelDock.Windows.Singleton")
+	if err != nil {
+		if errors.Is(err, app.ErrAlreadyRunning) {
+			return
+		}
+		log.Fatal(err)
+	}
+	defer instance.Close()
+
 	walkApp, err := walk.InitApp()
 	if err != nil {
 		log.Fatal(err)
@@ -28,6 +38,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer job.Close()
+	defer manager.Shutdown()
 
 	mainWindow, err := ui.NewMainWindowWithConnector(applicationModel, manager)
 	if err != nil {

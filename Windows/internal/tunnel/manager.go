@@ -449,6 +449,40 @@ func (m *Manager) Disconnect(id string) error {
 	return nil
 }
 
+// Shutdown prevents new connections and reconnects, then terminates every
+// managed SSH process. The application closes its Job Object afterwards as the
+// final process-ownership safety net.
+func (m *Manager) Shutdown() error {
+	m.mu.Lock()
+	if m.shuttingDown {
+		m.mu.Unlock()
+		return nil
+	}
+	m.shuttingDown = true
+	processes := make([]ManagedProcess, 0, len(m.runtimes))
+	for _, runtime := range m.runtimes {
+		runtime.desired = false
+		runtime.generation++
+		if runtime.cancel != nil {
+			runtime.cancel()
+		}
+		if runtime.process != nil {
+			processes = append(processes, runtime.process)
+			runtime.process = nil
+		}
+		if runtime.reserved {
+			m.ports.Release(endpointFor(runtime.definition))
+			runtime.reserved = false
+		}
+		runtime.state = model.StateDisconnected
+	}
+	m.mu.Unlock()
+	for _, process := range processes {
+		_ = process.Terminate()
+	}
+	return nil
+}
+
 func (m *Manager) SaveTemporary(id string) (model.TunnelDefinition, error) {
 	m.mu.Lock()
 	runtime, exists := m.runtimes[id]

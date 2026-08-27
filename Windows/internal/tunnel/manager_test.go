@@ -195,6 +195,23 @@ func TestManagerRenameAllowsRunningSavedTunnelAndDeleteRejectsIt(t *testing.T) {
 	}
 }
 
+func TestManagerShutdownDisconnectsRunningTunnelsAndRejectsNewConnections(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
+	if err := fixture.manager.ConnectSaved(context.Background(), "saved-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, _ := fixture.manager.Snapshot("saved-1")
+	if snapshot.State != model.StateDisconnected || snapshot.DesiredConnection {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if err := fixture.manager.ConnectSaved(context.Background(), "saved-1"); !errors.Is(err, ErrApplicationShuttingDown) {
+		t.Fatalf("ConnectSaved() error = %v", err)
+	}
+}
+
 func TestManagerMultipleTunnelsAreIndependentAndStderrDoesNotFailTransport(t *testing.T) {
 	definitions := []model.TunnelDefinition{managerDefinition("one", "gpu", 9101), managerDefinition("two", "gpu", 9102)}
 	fixture := newManagerFixture(t, definitions, []error{nil, nil})
