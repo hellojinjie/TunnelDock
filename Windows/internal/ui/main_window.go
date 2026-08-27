@@ -166,6 +166,13 @@ func (w *Window) RefreshHosts() {
 	})
 }
 
+// RefreshTunnels safely re-renders tunnel state after a background operation.
+func (w *Window) RefreshTunnels() {
+	walk.App().Synchronize(func() {
+		_ = w.refreshTunnels()
+	})
+}
+
 func (w *Window) onSearchChanged() {
 	w.model.SetSearchQuery(w.searchBox.Text())
 	_ = w.refreshHosts()

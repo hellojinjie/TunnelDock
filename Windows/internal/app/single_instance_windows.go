@@ -4,10 +4,17 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/tailscale/win"
 	"golang.org/x/sys/windows"
 )
 
 var ErrAlreadyRunning = errors.New("TunnelDock is already running")
+
+var (
+	findWindow          = win.FindWindow
+	showWindow          = win.ShowWindow
+	setForegroundWindow = win.SetForegroundWindow
+)
 
 type SingleInstance struct{ handle windows.Handle }
 
@@ -35,4 +42,21 @@ func (instance *SingleInstance) Close() error {
 	instance.handle = 0
 	_ = windows.ReleaseMutex(handle)
 	return windows.CloseHandle(handle)
+}
+
+// ActivateExistingMainWindow restores the primary application's native window
+// before a second process exits. Windows may decline foreground activation;
+// restoring still provides a visible taskbar entry in that case.
+func ActivateExistingMainWindow(title string) bool {
+	utf16Title, err := windows.UTF16PtrFromString(title)
+	if err != nil {
+		return false
+	}
+	handle := findWindow(nil, utf16Title)
+	if handle == 0 {
+		return false
+	}
+	showWindow(handle, win.SW_RESTORE)
+	setForegroundWindow(handle)
+	return true
 }

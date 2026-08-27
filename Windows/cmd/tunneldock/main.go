@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/hellojinjie/TunnelDock/Windows/internal/app"
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
@@ -22,6 +24,7 @@ func main() {
 	instance, err := app.AcquireSingleInstance("Local\\TunnelDock.Windows.Singleton")
 	if err != nil {
 		if errors.Is(err, app.ErrAlreadyRunning) {
+			app.ActivateExistingMainWindow("TunnelDock")
 			return
 		}
 		log.Fatal(err)
@@ -33,40 +36,84 @@ func main() {
 		log.Fatal(err)
 	}
 
-	applicationModel, manager, job, err := initializeRuntime()
+	runtime, err := initializeRuntime()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer job.Close()
-	defer manager.Shutdown()
+	defer runtime.job.Close()
+	defer runtime.manager.Shutdown()
 
-	mainWindow, err := ui.NewMainWindowWithConnector(applicationModel, manager)
+	mainWindow, err := ui.NewMainWindowWithConnector(runtime.model, runtime.manager)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer mainWindow.Dispose()
+	dataRoot, err := tunnelDockDataRoot()
+	if err != nil {
+		log.Fatal(err)
+	}
+	trayController, err := app.NewTrayController(persistence.NewSettingsStore(filepath.Join(dataRoot, "settings.json")))
+	if err != nil {
+		log.Fatal(err)
+	}
+	quitting := false
+	refresh := func() {
+		go func() {
+			_ = runtime.ReloadHosts(context.Background())
+			mainWindow.RefreshHosts()
+		}()
+	}
+	tray, err := ui.NewTray(mainWindow, trayController, runtime.manager, refresh, func() {
+		quitting = true
+		walk.App().Exit(0)
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer tray.Dispose()
+	mainWindow.Closing().Attach(func(cancel *bool, _ walk.CloseReason) {
+		if !quitting {
+			tray.MinimizeOnClose(cancel)
+		}
+	})
+	watchContext, cancelWatch := context.WithCancel(context.Background())
+	defer cancelWatch()
+	go runtime.WatchConfig(watchContext, mainWindow.RefreshHosts)
 
 	mainWindow.Show()
 	walkApp.Run()
 }
 
-func initializeRuntime() (*app.Model, *tunnel.Manager, *sshclient.Job, error) {
+type runtime struct {
+	model        *app.Model
+	manager      *tunnel.Manager
+	job          *sshclient.Job
+	adapter      *tunnel.SSHProcessAdapter
+	resolver     sshconfig.IncludeResolver
+	hostResolver sshconfig.HostResolver
+	configPath   string
+	mu           sync.RWMutex
+	expanded     sshconfig.ExpandedConfig
+}
+
+func initializeRuntime() (*runtime, error) {
 	dataRoot, err := tunnelDockDataRoot()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	sshExecutable, err := sshclient.LocateOpenSSH()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	homeDirectory, err := os.UserHomeDir()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("locate user home: %w", err)
+		return nil, fmt.Errorf("locate user home: %w", err)
 	}
 	sshDirectory := filepath.Join(homeDirectory, ".ssh")
-	expanded, err := sshconfig.NewIncludeResolver(sshDirectory).Resolve(filepath.Join(sshDirectory, "config"))
+	resolver := sshconfig.NewIncludeResolver(sshDirectory)
+	expanded, err := resolver.Resolve(filepath.Join(sshDirectory, "config"))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read SSH configuration: %w", err)
+		return nil, fmt.Errorf("read SSH configuration: %w", err)
 	}
 	hostResolver := sshconfig.NewHostResolver(sshExecutable, sshconfig.ExecRunner{})
 	aliases := sshconfig.Scanner{}.DiscoverAliases(expanded.Lines)
@@ -77,12 +124,12 @@ func initializeRuntime() (*app.Model, *tunnel.Manager, *sshclient.Job, error) {
 
 	job, err := sshclient.NewJob()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	runtimeStore := sshconfig.NewRuntimeConfigStore(filepath.Join(dataRoot, "runtime"))
 	if err := runtimeStore.RemoveStale(); err != nil {
 		_ = job.Close()
-		return nil, nil, nil, err
+		return nil, err
 	}
 	processes := tunnel.NewSSHProcessAdapter(
 		sshclient.NewProcessController(runtimeStore, sshclient.ExecLauncher{}, job), sshExecutable, expanded.Lines,
@@ -94,12 +141,66 @@ func initializeRuntime() (*app.Model, *tunnel.Manager, *sshclient.Job, error) {
 	})
 	if err := manager.LoadSavedDefinitions(); err != nil {
 		_ = job.Close()
-		return nil, nil, nil, err
+		return nil, err
 	}
 	manager.UpdateHosts(hosts)
 	applicationModel := app.NewModel()
 	applicationModel.SetHosts(hosts)
-	return applicationModel, manager, job, nil
+	return &runtime{
+		model: applicationModel, manager: manager, job: job, adapter: processes,
+		resolver: resolver, hostResolver: hostResolver, configPath: filepath.Join(sshDirectory, "config"), expanded: expanded,
+	}, nil
+}
+
+// ReloadHosts re-resolves both the recursive SSH config and the OpenSSH
+// effective values. New tunnels use the refreshed forwarding-sanitized input.
+func (r *runtime) ReloadHosts(ctx context.Context) error {
+	expanded, err := r.resolver.Resolve(r.configPath)
+	if err != nil {
+		return fmt.Errorf("read SSH configuration: %w", err)
+	}
+	aliases := sshconfig.Scanner{}.DiscoverAliases(expanded.Lines)
+	hosts := make([]model.SSHHost, 0, len(aliases))
+	for order, alias := range aliases {
+		hosts = append(hosts, r.hostResolver.Resolve(ctx, alias, order))
+	}
+	r.adapter.SetExpandedConfig(expanded.Lines)
+	r.manager.UpdateHosts(hosts)
+	r.model.SetHosts(hosts)
+	r.mu.Lock()
+	r.expanded = expanded
+	r.mu.Unlock()
+	return nil
+}
+
+// WatchConfig resubscribes after every change so Include additions and glob
+// changes are reflected without restarting TunnelDock.
+func (r *runtime) WatchConfig(ctx context.Context, refreshed func()) {
+	watcher := sshconfig.NewWatcher(300 * time.Millisecond)
+	for {
+		r.mu.RLock()
+		expanded := r.expanded
+		r.mu.RUnlock()
+		events, err := watcher.Events(ctx, expanded)
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+				continue
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case _, open := <-events:
+			if !open {
+				continue
+			}
+			_ = r.ReloadHosts(ctx)
+			refreshed()
+		}
+	}
 }
 
 func tunnelDockDataRoot() (string, error) {
