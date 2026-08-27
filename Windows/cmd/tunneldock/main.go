@@ -3,28 +3,23 @@ package main
 import (
 	"log"
 
+	"github.com/hellojinjie/TunnelDock/Windows/internal/app"
+	"github.com/hellojinjie/TunnelDock/Windows/internal/ui"
 	"github.com/tailscale/walk"
 )
 
 func main() {
-	app, err := walk.InitApp()
+	walkApp, err := walk.InitApp()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	mainWindow, err := walk.NewMainWindow()
+	mainWindow, err := ui.NewMainWindow(app.NewModel())
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer mainWindow.Dispose()
 
-	if err := mainWindow.SetTitle("TunnelDock"); err != nil {
-		log.Fatal(err)
-	}
-	if err := mainWindow.SetSize(walk.Size{Width: 960, Height: 640}); err != nil {
-		log.Fatal(err)
-	}
-
 	mainWindow.Show()
-	app.Run()
+	walkApp.Run()
 }
