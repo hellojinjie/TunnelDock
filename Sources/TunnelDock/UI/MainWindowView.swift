@@ -5,6 +5,7 @@ import TunnelDockCore
 
 struct MainWindowView: View {
     @ObservedObject var model: AppModel
+    @State private var isPresentingAddHost = false
 
     var body: some View {
         NavigationSplitView {
@@ -13,7 +14,8 @@ struct MainWindowView: View {
                 selection: $model.selectedPaneID,
                 refresh: { Task { await model.refreshSSHConfig() } },
                 addHost: { host in try await model.addSSHHost(host) },
-                openConfigInEditor: { model.openSSHConfigInDefaultEditor() }
+                openConfigInEditor: { model.openSSHConfigInDefaultEditor() },
+                isPresentingAddHost: $isPresentingAddHost
             )
             .navigationSplitViewColumnWidth(min: 210, ideal: 240)
         } detail: {
@@ -50,7 +52,7 @@ struct MainWindowView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 if #available(macOS 14.0, *) {
                     SettingsLink {
                         Label("Settings", systemImage: "gearshape")

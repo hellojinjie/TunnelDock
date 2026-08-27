@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TunnelDockAppSupport
 import TunnelDockCore
@@ -55,12 +56,16 @@ struct SSHHostQuickAddView: View {
                 Button(isSaving ? "Adding…" : "Add Host") {
                     submit()
                 }
-                .keyboardShortcut(.defaultAction)
                 .disabled(isSaving || draft.hostname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(24)
         .frame(width: 450)
+        .onAppear {
+            DispatchQueue.main.async {
+                NSApp.keyWindow?.makeFirstResponder(nil)
+            }
+        }
     }
 
     private func submit() {

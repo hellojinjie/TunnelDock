@@ -8,7 +8,7 @@ struct HostSidebar: View {
     let refresh: () -> Void
     let addHost: @MainActor (SSHHostConfiguration) async throws -> Void
     let openConfigInEditor: () -> Void
-    @State private var isPresentingAddHost = false
+    @Binding var isPresentingAddHost: Bool
 
     var body: some View {
         ScrollView {
@@ -19,13 +19,39 @@ struct HostSidebar: View {
                 .onTapGesture { selection = MainPane.allTunnelsID }
                 .padding(.bottom, 12)
 
-                HStack(spacing: 8) {
-                    Text("SSH Hosts")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if !appState.allHosts.isEmpty {
-                        searchField
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        Text("SSH Hosts")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+
+                        if !appState.allHosts.isEmpty {
+                            searchField
+                        }
+                    }
+
+                    HStack(spacing: 4) {
+                        Button {
+                            isPresentingAddHost = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Quick Add SSH Host")
+
+                        Button(action: openConfigInEditor) {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Open ~/.ssh/config in Default Editor")
+
+                        Button(action: refresh) {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Refresh SSH Config")
+                        .disabled(appState.isRefreshing)
                     }
                 }
                 .padding(.bottom, 4)
@@ -61,24 +87,6 @@ struct HostSidebar: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-        }
-        .toolbar {
-            Button {
-                isPresentingAddHost = true
-            } label: {
-                Label("Quick Add SSH Host", systemImage: "plus")
-            }
-            .help("Quick Add SSH Host")
-
-            Button(action: openConfigInEditor) {
-                Label("Open SSH Config in Default Editor", systemImage: "square.and.pencil")
-            }
-            .help("Open ~/.ssh/config in Default Editor")
-
-            Button(action: refresh) {
-                Label("Refresh SSH Config", systemImage: "arrow.clockwise")
-            }
-            .disabled(appState.isRefreshing)
         }
         .sheet(isPresented: $isPresentingAddHost) {
             SSHHostQuickAddView(save: addHost)
