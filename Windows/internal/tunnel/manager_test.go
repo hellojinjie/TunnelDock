@@ -212,6 +212,31 @@ func TestManagerShutdownDisconnectsRunningTunnelsAndRejectsNewConnections(t *tes
 	}
 }
 
+func TestManagerShutdownWaitsForProcessCompletion(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
+	if err := fixture.manager.ConnectSaved(context.Background(), "saved-1"); err != nil {
+		t.Fatal(err)
+	}
+	process := fixture.controller.process(0)
+	process.terminateGate = make(chan struct{})
+	completed := make(chan error, 1)
+	go func() { completed <- fixture.manager.Shutdown() }()
+	select {
+	case err := <-completed:
+		t.Fatalf("Shutdown() returned before process completion: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(process.terminateGate)
+	select {
+	case err := <-completed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Shutdown() did not return after process completion")
+	}
+}
+
 func TestManagerUpdatesSavedDefinitionOnlyWhenDisconnected(t *testing.T) {
 	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
 	updated := managerDefinition("ignored", "gpu", 9443)
@@ -394,18 +419,28 @@ func (c *fakeManagerController) process(index int) *fakeManagerProcess {
 }
 
 type fakeManagerProcess struct {
-	mu      sync.Mutex
-	running bool
-	events  chan sshclient.ProcessEvent
-	once    sync.Once
+	mu            sync.Mutex
+	running       bool
+	events        chan sshclient.ProcessEvent
+	done          chan struct{}
+	once          sync.Once
+	terminateGate chan struct{}
 }
 
 func newFakeManagerProcess() *fakeManagerProcess {
-	return &fakeManagerProcess{running: true, events: make(chan sshclient.ProcessEvent, 16)}
+	return &fakeManagerProcess{running: true, events: make(chan sshclient.ProcessEvent, 16), done: make(chan struct{})}
 }
 func (p *fakeManagerProcess) Events() <-chan sshclient.ProcessEvent { return p.events }
 func (p *fakeManagerProcess) IsRunning() bool                       { p.mu.Lock(); defer p.mu.Unlock(); return p.running }
-func (p *fakeManagerProcess) Terminate() error                      { p.exit(0); return nil }
+func (p *fakeManagerProcess) Done() <-chan struct{}                 { return p.done }
+func (p *fakeManagerProcess) Terminate() error {
+	if p.terminateGate != nil {
+		go func() { <-p.terminateGate; p.exit(0) }()
+		return nil
+	}
+	p.exit(0)
+	return nil
+}
 func (p *fakeManagerProcess) exit(code int) {
 	p.once.Do(func() {
 		p.mu.Lock()
@@ -413,6 +448,7 @@ func (p *fakeManagerProcess) exit(code int) {
 		p.mu.Unlock()
 		p.events <- sshclient.ProcessEvent{Kind: sshclient.ProcessEventExited, ExitCode: code}
 		close(p.events)
+		close(p.done)
 	})
 }
 func (p *fakeManagerProcess) stderr(value string) {

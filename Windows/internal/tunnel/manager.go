@@ -36,6 +36,7 @@ type ManagedProcess interface {
 	Events() <-chan sshclient.ProcessEvent
 	IsRunning() bool
 	Terminate() error
+	Done() <-chan struct{}
 }
 
 type ManagedProcessController interface {
@@ -479,6 +480,9 @@ func (m *Manager) Shutdown() error {
 	m.mu.Unlock()
 	for _, process := range processes {
 		_ = process.Terminate()
+	}
+	for _, process := range processes {
+		<-process.Done()
 	}
 	return nil
 }
