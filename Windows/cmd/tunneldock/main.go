@@ -71,6 +71,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer tray.Dispose()
+	mainWindow.SetSettingsAction(tray.ShowSettings)
 	mainWindow.Closing().Attach(func(cancel *bool, _ walk.CloseReason) {
 		if !quitting {
 			tray.MinimizeOnClose(cancel)

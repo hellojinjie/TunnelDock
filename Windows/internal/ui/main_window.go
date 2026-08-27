@@ -45,6 +45,8 @@ type Window struct {
 	renameButton       *walk.PushButton
 	editButton         *walk.PushButton
 	logButton          *walk.PushButton
+	settingsButton     *walk.PushButton
+	settingsAction     func()
 
 	currentHosts      []model.SSHHost
 	missingHosts      []model.SSHHost
@@ -115,6 +117,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 								PushButton{AssignTo: &window.renameButton, Text: "Rename", OnClicked: window.onRename},
 								PushButton{AssignTo: &window.editButton, Text: "Edit", OnClicked: window.onEdit},
 								PushButton{AssignTo: &window.logButton, Text: "View Log", OnClicked: window.onViewLog},
+								PushButton{AssignTo: &window.settingsButton, Text: "Settings", OnClicked: window.onSettings},
 							}},
 							Label{Text: "Quick Forward"},
 							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
@@ -161,7 +164,15 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 	window.renameButton.SetEnabled(false)
 	window.editButton.SetEnabled(false)
 	window.logButton.SetEnabled(false)
+	window.settingsButton.SetEnabled(false)
 	return window, nil
+}
+
+// SetSettingsAction makes the tray setting reachable from the main window even
+// after the user has hidden the notification icon.
+func (w *Window) SetSettingsAction(action func()) {
+	w.settingsAction = action
+	w.settingsButton.SetEnabled(action != nil)
 }
 
 // RefreshHosts safely renders the latest application model snapshot after a
@@ -447,5 +458,11 @@ func (w *Window) onViewLog() {
 	}
 	if err := ShowTunnelLog(w, w.manager, w.selectedTunnelID); err != nil {
 		_ = w.validation.SetText(err.Error())
+	}
+}
+
+func (w *Window) onSettings() {
+	if w.settingsAction != nil {
+		w.settingsAction()
 	}
 }
