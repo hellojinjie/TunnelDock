@@ -9,6 +9,7 @@ import (
 	"github.com/hellojinjie/TunnelDock/Windows/internal/tunnel"
 	"github.com/tailscale/walk"
 	. "github.com/tailscale/walk/declarative"
+	"github.com/tailscale/win"
 )
 
 // Window is the Windows-native TunnelDock application shell. Runtime work
@@ -17,9 +18,9 @@ import (
 type Window struct {
 	*walk.MainWindow
 
-	model     *app.Model
-	quick     *app.QuickForward
-	connector app.TemporaryTunnelConnector
+	model   *app.Model
+	quick   *app.QuickForward
+	manager *tunnel.Manager
 
 	searchBox        *walk.LineEdit
 	currentHostList  *walk.ListBox
@@ -34,19 +35,28 @@ type Window struct {
 	advanced         *walk.Composite
 	connectButton    *walk.PushButton
 	validation       *walk.Label
+	savedTunnelList  *walk.ListBox
+	temporaryList    *walk.ListBox
+	disconnectButton *walk.PushButton
+	saveButton       *walk.PushButton
+	browserButton    *walk.PushButton
+	deleteButton     *walk.PushButton
+	renameButton     *walk.PushButton
 
-	currentHosts []model.SSHHost
-	missingHosts []model.SSHHost
-	selectedHost *model.SSHHost
-	syncingForm  bool
+	currentHosts      []model.SSHHost
+	missingHosts      []model.SSHHost
+	selectedHost      *model.SSHHost
+	syncingForm       bool
+	selectedTunnelID  string
+	selectedTemporary bool
 }
 
 func NewMainWindow(model *app.Model) (*Window, error) {
 	return NewMainWindowWithConnector(model, nil)
 }
 
-func NewMainWindowWithConnector(model *app.Model, connector app.TemporaryTunnelConnector) (*Window, error) {
-	window := &Window{model: model, quick: app.NewQuickForward(), connector: connector}
+func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Window, error) {
+	window := &Window{model: model, quick: app.NewQuickForward(), manager: manager}
 
 	err := (MainWindow{
 		AssignTo: &window.MainWindow,
@@ -90,7 +100,16 @@ func NewMainWindowWithConnector(model *app.Model, connector app.TemporaryTunnelC
 							Label{Text: "Effective connection"},
 							Label{AssignTo: &window.detailConnection, Text: "Choose a host from the sidebar."},
 							Label{Text: "Saved Tunnels"},
-							Label{Text: "Select a host to view and manage its saved tunnels."},
+							ListBox{AssignTo: &window.savedTunnelList, MinSize: Size{Width: 0, Height: 90}, OnCurrentIndexChanged: window.onSavedTunnelSelected},
+							Label{Text: "Temporary Tunnels"},
+							ListBox{AssignTo: &window.temporaryList, MinSize: Size{Width: 0, Height: 70}, OnCurrentIndexChanged: window.onTemporaryTunnelSelected},
+							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
+								PushButton{AssignTo: &window.disconnectButton, Text: "Disconnect", OnClicked: window.onDisconnect},
+								PushButton{AssignTo: &window.saveButton, Text: "Save", OnClicked: window.onSaveTemporary},
+								PushButton{AssignTo: &window.browserButton, Text: "Open in Browser", OnClicked: window.onOpenBrowser},
+								PushButton{AssignTo: &window.deleteButton, Text: "Delete", OnClicked: window.onDelete},
+								PushButton{AssignTo: &window.renameButton, Text: "Rename", OnClicked: window.onRename},
+							}},
 							Label{Text: "Quick Forward"},
 							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
 								LineEdit{AssignTo: &window.remotePort, CueBanner: "Remote Port", StretchFactor: 1, OnTextChanged: window.onRemotePortChanged},
@@ -118,12 +137,21 @@ func NewMainWindowWithConnector(model *app.Model, connector app.TemporaryTunnelC
 		window.Dispose()
 		return nil, err
 	}
+	if err := window.refreshTunnels(); err != nil {
+		window.Dispose()
+		return nil, err
+	}
 	window.advanced.SetVisible(false)
 	if err := window.protocol.SetCurrentIndex(0); err != nil {
 		window.Dispose()
 		return nil, err
 	}
 	window.connectButton.SetEnabled(false)
+	window.disconnectButton.SetEnabled(false)
+	window.saveButton.SetEnabled(false)
+	window.browserButton.SetEnabled(false)
+	window.deleteButton.SetEnabled(false)
+	window.renameButton.SetEnabled(false)
 	return window, nil
 }
 
@@ -179,7 +207,7 @@ func (w *Window) selectHost(host *model.SSHHost) {
 	}
 	selected := *host
 	w.selectedHost = &selected
-	w.connectButton.SetEnabled(host.Availability == model.HostAvailable && w.connector != nil)
+	w.connectButton.SetEnabled(host.Availability == model.HostAvailable && w.manager != nil)
 }
 
 func (w *Window) onRemotePortChanged() { w.quick.SetRemotePort(w.remotePort.Text()); w.syncLocalPort() }
@@ -210,7 +238,7 @@ func (w *Window) syncLocalPort() {
 func (w *Window) toggleAdvanced() { w.advanced.SetVisible(!w.advanced.Visible()) }
 
 func (w *Window) onConnect() {
-	if w.selectedHost == nil || w.selectedHost.Availability != model.HostAvailable || w.connector == nil {
+	if w.selectedHost == nil || w.selectedHost.Availability != model.HostAvailable || w.manager == nil {
 		return
 	}
 	if _, err := w.quick.TunnelDefinition(w.selectedHost.Alias); err != nil {
@@ -220,7 +248,7 @@ func (w *Window) onConnect() {
 	_ = w.validation.SetText("Connecting...")
 	alias := w.selectedHost.Alias
 	go func() {
-		_, err := w.quick.Connect(context.Background(), w.connector, alias)
+		_, err := w.quick.Connect(context.Background(), w.manager, alias)
 		walk.App().Synchronize(func() {
 			if errors.Is(err, tunnel.ErrPortUnavailable) {
 				w.quick.HandlePortConflict()
@@ -231,7 +259,122 @@ func (w *Window) onConnect() {
 				_ = w.validation.SetText(err.Error())
 			} else {
 				_ = w.validation.SetText("Temporary tunnel is connecting.")
+				_ = w.refreshTunnels()
 			}
 		})
 	}()
+}
+
+func (w *Window) refreshTunnels() error {
+	if w.manager == nil {
+		return w.savedTunnelList.SetModel([]string{})
+	}
+	rows := TunnelListRows(w.manager.Snapshots())
+	if err := w.savedTunnelList.SetModel(rows.Saved); err != nil {
+		return err
+	}
+	return w.temporaryList.SetModel(rows.Temporary)
+}
+
+func (w *Window) onSavedTunnelSelected() {
+	index := w.savedTunnelList.CurrentIndex()
+	saved := savedSnapshots(w.manager)
+	if index < 0 || index >= len(saved) {
+		return
+	}
+	w.selectedTunnelID, w.selectedTemporary = saved[index].ID, false
+	w.disconnectButton.SetEnabled(saved[index].State != model.StateDisconnected)
+	w.saveButton.SetEnabled(false)
+	w.browserButton.SetEnabled(true)
+	w.deleteButton.SetEnabled(saved[index].State == model.StateDisconnected)
+	w.renameButton.SetEnabled(true)
+}
+
+func (w *Window) onTemporaryTunnelSelected() {
+	index := w.temporaryList.CurrentIndex()
+	temporary := temporarySnapshots(w.manager)
+	if index < 0 || index >= len(temporary) {
+		return
+	}
+	w.selectedTunnelID, w.selectedTemporary = temporary[index].ID, true
+	w.disconnectButton.SetEnabled(temporary[index].State != model.StateDisconnected)
+	w.saveButton.SetEnabled(true)
+	w.browserButton.SetEnabled(true)
+	w.deleteButton.SetEnabled(false)
+	w.renameButton.SetEnabled(false)
+}
+
+func (w *Window) onDisconnect() {
+	if w.manager == nil || w.selectedTunnelID == "" {
+		return
+	}
+	_ = w.manager.Disconnect(w.selectedTunnelID)
+	_ = w.refreshTunnels()
+}
+
+func (w *Window) onSaveTemporary() {
+	if w.manager == nil || !w.selectedTemporary || w.selectedTunnelID == "" {
+		return
+	}
+	if _, err := w.manager.SaveTemporary(w.selectedTunnelID); err != nil {
+		_ = w.validation.SetText(err.Error())
+		return
+	}
+	_ = w.refreshTunnels()
+}
+
+func (w *Window) onOpenBrowser() {
+	if w.manager == nil || w.selectedTunnelID == "" {
+		return
+	}
+	runtime, exists := w.manager.Snapshot(w.selectedTunnelID)
+	if !exists {
+		return
+	}
+	if err := OpenBrowser(TunnelBrowserURL(runtime.Definition)); err != nil {
+		_ = w.validation.SetText(err.Error())
+	}
+}
+
+func (w *Window) onDelete() {
+	if w.manager == nil || w.selectedTemporary || w.selectedTunnelID == "" {
+		return
+	}
+	if walk.MsgBox(w, "Delete Tunnel", "Delete this saved tunnel?", walk.MsgBoxYesNo|walk.MsgBoxIconWarning) != int(win.IDYES) {
+		return
+	}
+	if err := w.manager.Delete(w.selectedTunnelID); err != nil {
+		_ = w.validation.SetText(err.Error())
+		return
+	}
+	w.selectedTunnelID = ""
+	w.deleteButton.SetEnabled(false)
+	_ = w.refreshTunnels()
+}
+
+func (w *Window) onRename() {
+	if w.manager == nil || w.selectedTemporary || w.selectedTunnelID == "" {
+		return
+	}
+	runtime, exists := w.manager.Snapshot(w.selectedTunnelID)
+	if !exists {
+		return
+	}
+	initial := runtime.DisplayName()
+	if runtime.Definition.Name != nil {
+		initial = *runtime.Definition.Name
+	}
+	name, accepted, err := promptTunnelRename(w, initial)
+	if err != nil {
+		_ = w.validation.SetText(err.Error())
+		return
+	}
+	if !accepted {
+		return
+	}
+	if err := w.manager.Rename(w.selectedTunnelID, name); err != nil {
+		_ = w.validation.SetText(err.Error())
+		return
+	}
+	_ = w.refreshTunnels()
 }

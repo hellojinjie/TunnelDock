@@ -156,6 +156,45 @@ func TestManagerTemporarySaveAndDisconnectBehavior(t *testing.T) {
 	}
 }
 
+func TestManagerSnapshotsListsSavedBeforeTemporary(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
+	temporaryID, err := fixture.manager.ConnectTemporary(context.Background(), managerDefinition("", "gpu", 9001))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshots := fixture.manager.Snapshots()
+	if len(snapshots) != 2 || snapshots[0].ID != "saved-1" || snapshots[0].Temporary || snapshots[1].ID != temporaryID || !snapshots[1].Temporary {
+		t.Fatalf("Snapshots() = %#v", snapshots)
+	}
+}
+
+func TestManagerRenameAllowsRunningSavedTunnelAndDeleteRejectsIt(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
+	if err := fixture.manager.ConnectSaved(context.Background(), "saved-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.Rename("saved-1", "Jupyter"); err != nil {
+		t.Fatalf("Rename() error: %v", err)
+	}
+	snapshot, _ := fixture.manager.Snapshot("saved-1")
+	if snapshot.Definition.Name == nil || *snapshot.Definition.Name != "Jupyter" {
+		t.Fatalf("renamed snapshot = %#v", snapshot)
+	}
+	if err := fixture.manager.Delete("saved-1"); !errors.Is(err, ErrTunnelRunning) {
+		t.Fatalf("Delete() error = %v, want ErrTunnelRunning", err)
+	}
+	if err := fixture.manager.Disconnect("saved-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.Delete("saved-1"); err != nil {
+		t.Fatalf("Delete() error: %v", err)
+	}
+	if _, exists := fixture.manager.Snapshot("saved-1"); exists {
+		t.Fatal("deleted saved runtime remained")
+	}
+}
+
 func TestManagerMultipleTunnelsAreIndependentAndStderrDoesNotFailTransport(t *testing.T) {
 	definitions := []model.TunnelDefinition{managerDefinition("one", "gpu", 9101), managerDefinition("two", "gpu", 9102)}
 	fixture := newManagerFixture(t, definitions, []error{nil, nil})

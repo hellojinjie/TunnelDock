@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ var (
 	ErrHostUnavailable         = errors.New("SSH Host is unavailable")
 	ErrTunnelNotFound          = errors.New("tunnel not found")
 	ErrTunnelNotTemporary      = errors.New("tunnel is not temporary")
+	ErrTunnelRunning           = errors.New("running tunnel cannot be deleted")
 	ErrApplicationShuttingDown = errors.New("application is shutting down")
 	ErrPortUnavailable         = errors.New("local port is unavailable")
 )
@@ -473,6 +475,60 @@ func (m *Manager) SaveTemporary(id string) (model.TunnelDefinition, error) {
 	return definition, nil
 }
 
+// Rename changes a saved tunnel's display name without changing its runtime
+// connection state, so it remains available while the tunnel is running.
+func (m *Manager) Rename(id, name string) error {
+	m.mu.Lock()
+	runtime, exists := m.runtimes[id]
+	if !exists || runtime.temporary {
+		m.mu.Unlock()
+		return ErrTunnelNotFound
+	}
+	updated := runtime.definition
+	updated.Name = &name
+	updated.UpdatedAt = m.now()
+	if err := updated.Validate(); err != nil {
+		m.mu.Unlock()
+		return err
+	}
+	previous := runtime.definition
+	runtime.definition = updated
+	m.mu.Unlock()
+	if err := m.persistDefinitions(); err != nil {
+		m.mu.Lock()
+		if current, ok := m.runtimes[id]; ok {
+			current.definition = previous
+		}
+		m.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// Delete removes a disconnected saved tunnel after the UI has confirmed the
+// action. Temporary tunnels are removed by Disconnect instead.
+func (m *Manager) Delete(id string) error {
+	m.mu.Lock()
+	runtime, exists := m.runtimes[id]
+	if !exists || runtime.temporary {
+		m.mu.Unlock()
+		return ErrTunnelNotFound
+	}
+	if runtime.state != model.StateDisconnected {
+		m.mu.Unlock()
+		return ErrTunnelRunning
+	}
+	delete(m.runtimes, id)
+	for index, savedID := range m.savedOrder {
+		if savedID == id {
+			m.savedOrder = append(m.savedOrder[:index], m.savedOrder[index+1:]...)
+			break
+		}
+	}
+	m.mu.Unlock()
+	return m.persistDefinitions()
+}
+
 func (m *Manager) Snapshot(id string) (model.TunnelRuntime, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -481,6 +537,31 @@ func (m *Manager) Snapshot(id string) (model.TunnelRuntime, bool) {
 		return model.TunnelRuntime{}, false
 	}
 	return snapshotOf(id, runtime), true
+}
+
+// Snapshots returns saved runtimes in persistence order followed by temporary
+// runtimes in stable ID order for deterministic native UI rendering.
+func (m *Manager) Snapshots() []model.TunnelRuntime {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	snapshots := make([]model.TunnelRuntime, 0, len(m.runtimes))
+	for _, id := range m.savedOrder {
+		if runtime, exists := m.runtimes[id]; exists && !runtime.temporary {
+			snapshots = append(snapshots, snapshotOf(id, runtime))
+		}
+	}
+	temporaryIDs := make([]string, 0)
+	for id, runtime := range m.runtimes {
+		if runtime.temporary {
+			temporaryIDs = append(temporaryIDs, id)
+		}
+	}
+	sort.Strings(temporaryIDs)
+	for _, id := range temporaryIDs {
+		snapshots = append(snapshots, snapshotOf(id, m.runtimes[id]))
+	}
+	return snapshots
 }
 
 func snapshotOf(id string, runtime *managedRuntime) model.TunnelRuntime {
