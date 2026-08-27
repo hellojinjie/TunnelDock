@@ -1,4 +1,4 @@
-package sshconfig
+package sshconfig_test
 
 import (
 	"os"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hellojinjie/TunnelDock/Windows/internal/sshclient"
+	. "github.com/hellojinjie/TunnelDock/Windows/internal/sshconfig"
 )
 
 func TestSanitizeRemovesForwardingAndControlDirectivesOnly(t *testing.T) {
