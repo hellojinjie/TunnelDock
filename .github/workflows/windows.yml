@@ -1,0 +1,31 @@
+name: Windows
+
+on:
+  push:
+    paths:
+      - "Windows/**"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "Windows/**"
+      - ".github/workflows/windows.yml"
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+      - run: go mod download
+      - run: go test ./...
+      - run: go vet ./...
+      - run: .\scripts\build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TunnelDock-windows
+          path: Windows/dist/TunnelDock.exe
