@@ -42,6 +42,7 @@ type Window struct {
 	browserButton    *walk.PushButton
 	deleteButton     *walk.PushButton
 	renameButton     *walk.PushButton
+	logButton        *walk.PushButton
 
 	currentHosts      []model.SSHHost
 	missingHosts      []model.SSHHost
@@ -109,6 +110,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 								PushButton{AssignTo: &window.browserButton, Text: "Open in Browser", OnClicked: window.onOpenBrowser},
 								PushButton{AssignTo: &window.deleteButton, Text: "Delete", OnClicked: window.onDelete},
 								PushButton{AssignTo: &window.renameButton, Text: "Rename", OnClicked: window.onRename},
+								PushButton{AssignTo: &window.logButton, Text: "View Log", OnClicked: window.onViewLog},
 							}},
 							Label{Text: "Quick Forward"},
 							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
@@ -152,6 +154,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 	window.browserButton.SetEnabled(false)
 	window.deleteButton.SetEnabled(false)
 	window.renameButton.SetEnabled(false)
+	window.logButton.SetEnabled(false)
 	return window, nil
 }
 
@@ -288,6 +291,7 @@ func (w *Window) onSavedTunnelSelected() {
 	w.browserButton.SetEnabled(true)
 	w.deleteButton.SetEnabled(saved[index].State == model.StateDisconnected)
 	w.renameButton.SetEnabled(true)
+	w.logButton.SetEnabled(true)
 }
 
 func (w *Window) onTemporaryTunnelSelected() {
@@ -302,6 +306,7 @@ func (w *Window) onTemporaryTunnelSelected() {
 	w.browserButton.SetEnabled(true)
 	w.deleteButton.SetEnabled(false)
 	w.renameButton.SetEnabled(false)
+	w.logButton.SetEnabled(true)
 }
 
 func (w *Window) onDisconnect() {
@@ -377,4 +382,13 @@ func (w *Window) onRename() {
 		return
 	}
 	_ = w.refreshTunnels()
+}
+
+func (w *Window) onViewLog() {
+	if w.manager == nil || w.selectedTunnelID == "" {
+		return
+	}
+	if err := ShowTunnelLog(w, w.manager, w.selectedTunnelID); err != nil {
+		_ = w.validation.SetText(err.Error())
+	}
 }
