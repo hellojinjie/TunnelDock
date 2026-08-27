@@ -1,8 +1,12 @@
 package ui
 
 import (
+	"context"
+	"errors"
+
 	"github.com/hellojinjie/TunnelDock/Windows/internal/app"
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
+	"github.com/hellojinjie/TunnelDock/Windows/internal/tunnel"
 	"github.com/tailscale/walk"
 	. "github.com/tailscale/walk/declarative"
 )
@@ -13,20 +17,36 @@ import (
 type Window struct {
 	*walk.MainWindow
 
-	model *app.Model
+	model     *app.Model
+	quick     *app.QuickForward
+	connector app.TemporaryTunnelConnector
 
 	searchBox        *walk.LineEdit
 	currentHostList  *walk.ListBox
 	missingHostList  *walk.ListBox
 	detailTitle      *walk.Label
 	detailConnection *walk.Label
+	remotePort       *walk.LineEdit
+	localPort        *walk.LineEdit
+	remoteHost       *walk.LineEdit
+	localAddress     *walk.LineEdit
+	protocol         *walk.ComboBox
+	advanced         *walk.Composite
+	connectButton    *walk.PushButton
+	validation       *walk.Label
 
 	currentHosts []model.SSHHost
 	missingHosts []model.SSHHost
+	selectedHost *model.SSHHost
+	syncingForm  bool
 }
 
 func NewMainWindow(model *app.Model) (*Window, error) {
-	window := &Window{model: model}
+	return NewMainWindowWithConnector(model, nil)
+}
+
+func NewMainWindowWithConnector(model *app.Model, connector app.TemporaryTunnelConnector) (*Window, error) {
+	window := &Window{model: model, quick: app.NewQuickForward(), connector: connector}
 
 	err := (MainWindow{
 		AssignTo: &window.MainWindow,
@@ -72,7 +92,18 @@ func NewMainWindow(model *app.Model) (*Window, error) {
 							Label{Text: "Saved Tunnels"},
 							Label{Text: "Select a host to view and manage its saved tunnels."},
 							Label{Text: "Quick Forward"},
-							Label{Text: "Create a temporary local forward for the selected host."},
+							Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
+								LineEdit{AssignTo: &window.remotePort, CueBanner: "Remote Port", StretchFactor: 1, OnTextChanged: window.onRemotePortChanged},
+								PushButton{AssignTo: &window.connectButton, Text: "Connect", OnClicked: window.onConnect},
+							}},
+							PushButton{Text: "Advanced", OnClicked: window.toggleAdvanced},
+							Composite{AssignTo: &window.advanced, Layout: Grid{Columns: 2, Spacing: 8}, Children: []Widget{
+								Label{Text: "Local Port"}, LineEdit{AssignTo: &window.localPort, OnTextChanged: window.onLocalPortChanged},
+								Label{Text: "Remote Host"}, LineEdit{AssignTo: &window.remoteHost, Text: window.quick.RemoteHost, OnTextChanged: window.onRemoteHostChanged},
+								Label{Text: "Local Address"}, LineEdit{AssignTo: &window.localAddress, Text: window.quick.LocalAddress, OnTextChanged: window.onLocalAddressChanged},
+								Label{Text: "Browser Protocol"}, ComboBox{AssignTo: &window.protocol, Model: []string{"http", "https"}, OnCurrentIndexChanged: window.onProtocolChanged},
+							}},
+							Label{AssignTo: &window.validation},
 						},
 					},
 				},
@@ -87,6 +118,12 @@ func NewMainWindow(model *app.Model) (*Window, error) {
 		window.Dispose()
 		return nil, err
 	}
+	window.advanced.SetVisible(false)
+	if err := window.protocol.SetCurrentIndex(0); err != nil {
+		window.Dispose()
+		return nil, err
+	}
+	window.connectButton.SetEnabled(false)
 	return window, nil
 }
 
@@ -135,4 +172,66 @@ func (w *Window) selectHost(host *model.SSHHost) {
 	detail := HostDetailFor(host)
 	_ = w.detailTitle.SetText(detail.Title)
 	_ = w.detailConnection.SetText(detail.Connection)
+	if host == nil {
+		w.selectedHost = nil
+		w.connectButton.SetEnabled(false)
+		return
+	}
+	selected := *host
+	w.selectedHost = &selected
+	w.connectButton.SetEnabled(host.Availability == model.HostAvailable && w.connector != nil)
+}
+
+func (w *Window) onRemotePortChanged() { w.quick.SetRemotePort(w.remotePort.Text()); w.syncLocalPort() }
+func (w *Window) onLocalPortChanged() {
+	if !w.syncingForm {
+		w.quick.SetLocalPort(w.localPort.Text())
+	}
+}
+func (w *Window) onRemoteHostChanged()   { w.quick.RemoteHost = w.remoteHost.Text() }
+func (w *Window) onLocalAddressChanged() { w.quick.LocalAddress = w.localAddress.Text() }
+func (w *Window) onProtocolChanged() {
+	if w.protocol.CurrentIndex() == 1 {
+		w.quick.WebProtocol = model.TunnelProtocolHTTPS
+		return
+	}
+	w.quick.WebProtocol = model.TunnelProtocolHTTP
+}
+
+func (w *Window) syncLocalPort() {
+	if !w.quick.LocalPortFollowsRemote() {
+		return
+	}
+	w.syncingForm = true
+	_ = w.localPort.SetText(w.quick.LocalPort)
+	w.syncingForm = false
+}
+
+func (w *Window) toggleAdvanced() { w.advanced.SetVisible(!w.advanced.Visible()) }
+
+func (w *Window) onConnect() {
+	if w.selectedHost == nil || w.selectedHost.Availability != model.HostAvailable || w.connector == nil {
+		return
+	}
+	if _, err := w.quick.TunnelDefinition(w.selectedHost.Alias); err != nil {
+		_ = w.validation.SetText(err.Error())
+		return
+	}
+	_ = w.validation.SetText("Connecting...")
+	alias := w.selectedHost.Alias
+	go func() {
+		_, err := w.quick.Connect(context.Background(), w.connector, alias)
+		walk.App().Synchronize(func() {
+			if errors.Is(err, tunnel.ErrPortUnavailable) {
+				w.quick.HandlePortConflict()
+				w.advanced.SetVisible(true)
+				_ = w.localPort.SetFocus()
+			}
+			if err != nil {
+				_ = w.validation.SetText(err.Error())
+			} else {
+				_ = w.validation.SetText("Temporary tunnel is connecting.")
+			}
+		})
+	}()
 }
