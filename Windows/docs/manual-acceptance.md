@@ -22,6 +22,26 @@ or Not run and retain the SSH test configuration with the test record.
 | Process cleanup | after Quit, no TunnelDock `ssh.exe` survives; force-kill TunnelDock and confirm Job Object terminates its children | Not run |
 | Portable package | copy `dist\\TunnelDock.exe` to a clean Windows machine without Go; with OpenSSH Client installed, start it and repeat smoke checks | Not run |
 
+## Redesigned interface matrix
+
+Run every visual row against the macOS build at the same window size. “Automated”
+means the underlying presentation, geometry, reconciliation, or construction
+rule has a regression test; it does not replace checking the rendered desktop.
+
+| Area | Checks | Status |
+| --- | --- | --- |
+| Light appearance | main window, Add Host, Edit, Rename, Settings, connection error, delete confirmation, and log viewer | Not run |
+| Dark appearance | repeat every light-appearance window; change Windows app mode while windows remain open and confirm title bars, native controls, cards, rows, and text update without restart | Not run |
+| Display scale | repeat the main window and every dialog at 100%, 150%, and 200%; check clipping, minimum sizes, icon alignment, focus rings, and row hit targets | Not run |
+| Tunnel rows | empty, single, multiple, long names and endpoints, plus an inline failure message; no `TableView` or detached action bar is present | Automated; visual not run |
+| Tunnel states | disconnected, connecting, connected, reconnecting, and failed state icons/text; Connect, Disconnect, Browser, and More reflect the current state | Automated; visual not run |
+| Sidebar | All Tunnels, ready host, configuration error, active host, missing host, and filtered search results; selection survives refresh or falls back to All Tunnels | Automated; visual not run |
+| Quick Forward | collapsed and expanded Advanced section; remote/local port following; validation; port collision expands Advanced and focuses Local Port | Automated; visual not run |
+| Mouse and keyboard | click, wheel, Tab, Shift-Tab, row action arrows, Enter, Space, Esc, default buttons, cancel buttons, and popup menus | Not run |
+| Refresh preservation | selected sidebar pane, focused tunnel row/action, list scroll position, search query, and Advanced disclosure remain stable across refreshes | Automated in part; visual not run |
+| Long content | long aliases, tunnel names, endpoint text, validation messages, errors, and log lines truncate or scroll without covering actions | Not run |
+| Resource lifecycle | repeatedly open/close all dialogs and log windows, switch appearance, and move between DPI monitors; verify handles and memory do not grow continuously | Automated in part; visual not run |
+
 Automated tests cover parsing, persistence, state transitions, process cleanup,
 and the Job Object child-process guarantee. They do not replace this matrix:
 the network, Windows shell, tray, and real OpenSSH scenarios above require a
