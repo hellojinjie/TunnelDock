@@ -95,15 +95,23 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 	if err != nil {
 		return fail(err)
 	}
-	if err := window.sidebar.SetMinMaxSize(walk.Size{Width: 210}, walk.Size{Width: 320}); err != nil {
+	policy := defaultWindowLayoutPolicy()
+	if err := window.sidebar.SetMinMaxSize(walk.Size{Width: policy.SidebarWidth}, walk.Size{Width: policy.SidebarWidth}); err != nil {
 		return fail(err)
 	}
-	_ = window.sidebar.SetSize(walk.Size{Width: 240})
+	_ = window.sidebar.SetSize(walk.Size{Width: policy.SidebarWidth})
 	detailScroll, err := walk.NewScrollView(splitter)
 	if err != nil {
 		return fail(err)
 	}
-	detailScroll.SetScrollbars(false, true)
+	detailScroll.SetScrollbars(true, true)
+	if stretchLayout, ok := splitter.Layout().(interface {
+		SetStretchFactor(walk.Widget, int) error
+	}); ok {
+		_ = stretchLayout.SetStretchFactor(window.sidebar, policy.SidebarWidth)
+		_ = stretchLayout.SetStretchFactor(detailScroll, policy.WindowWidth-policy.SidebarWidth)
+	}
+	_ = splitter.SetFixed(window.sidebar, true)
 	detailLayout := walk.NewVBoxLayout()
 	detailLayout.SetMargins(walk.Margins{HNear: 24, VNear: 24, HFar: 24, VFar: 24})
 	detailLayout.SetSpacing(12)
@@ -120,6 +128,9 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 	if err := header.SetLayout(headerLayout); err != nil {
 		return fail(err)
 	}
+	if err := header.SetMinMaxSize(walk.Size{Height: policy.HeaderHeight}, walk.Size{Height: policy.HeaderHeight}); err != nil {
+		return fail(err)
+	}
 	window.detailTitle, err = walk.NewLabel(header)
 	if err != nil {
 		return fail(err)
@@ -131,7 +142,22 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 		return fail(err)
 	}
 	_ = headerLayout.SetStretchFactor(headerSpacer, 1)
-	window.settingsButton, err = NewIconButton(header, env, IconSettings, "Settings", nil)
+	settingsHost, err := walk.NewComposite(header)
+	if err != nil {
+		return fail(err)
+	}
+	settingsLayout := walk.NewVBoxLayout()
+	settingsLayout.SetMargins(walk.Margins{})
+	settingsLayout.SetAlignment(walk.AlignHCenterVCenter)
+	if err := settingsHost.SetLayout(settingsLayout); err != nil {
+		return fail(err)
+	}
+	if err := settingsHost.SetMinMaxSize(
+		walk.Size{Width: policy.IconButtonSize}, walk.Size{Width: policy.IconButtonSize},
+	); err != nil {
+		return fail(err)
+	}
+	window.settingsButton, err = NewIconButton(settingsHost, env, IconSettings, "Settings", nil)
 	if err != nil {
 		return fail(err)
 	}
@@ -176,14 +202,14 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 	if err != nil {
 		return fail(err)
 	}
-	window.quickView.SetVisible(false)
+	setChildVisible(window.quickView, false)
 	window.statusLabel, err = walk.NewLabel(detailScroll)
 	if err != nil {
 		return fail(err)
 	}
 	window.statusLabel.SetFont(resources.CaptionFont)
 	window.statusLabel.SetTextColor(resources.Palette.Failure)
-	window.statusLabel.SetVisible(false)
+	setChildVisible(window.statusLabel, false)
 	if applicationIcon, iconErr := walk.NewIconFromResource("APP"); iconErr == nil {
 		_ = window.SetIcon(applicationIcon)
 	}
@@ -211,6 +237,21 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 }
 
 func (w *Window) Environment() *UIEnvironment { return w.env }
+
+func (w *Window) Show() {
+	w.MainWindow.Show()
+	w.applyVisibilityState()
+	w.RequestLayout()
+}
+
+func (w *Window) applyVisibilityState() {
+	visibility := detailVisibilityFor(w.allTunnelsSelected, len(w.visibleTunnels), w.quick != nil && w.quick.AdvancedExpanded)
+	showQuickForward := visibility.QuickForward && w.selectedHost != nil && w.selectedHost.Availability == model.HostAvailable
+	setChildVisible(w.quickView, showQuickForward)
+	setChildVisible(w.tunnelList.emptyLabel, visibility.EmptyTunnels)
+	setChildVisible(w.tunnelList.scroll, visibility.TunnelScroll)
+	setChildVisible(w.quickView.advanced, visibility.Advanced)
+}
 
 func (w *Window) SetSettingsAction(action func()) {
 	w.settingsAction = action
@@ -287,7 +328,7 @@ func (w *Window) selectAllTunnels() {
 	_ = w.detailConnection.SetText("")
 	_ = w.detailStatus.SetText("")
 	_ = w.tunnelsTitle.SetText("All Tunnels")
-	w.quickView.SetVisible(false)
+	setChildVisible(w.quickView, false)
 	_ = w.refreshTunnels()
 }
 
@@ -307,7 +348,7 @@ func (w *Window) selectHost(host *model.SSHHost) {
 	_ = w.tunnelsTitle.SetText("Recent Tunnels")
 	available := host.Availability == model.HostAvailable
 	w.quickView.SetHostAvailable(available)
-	w.quickView.SetVisible(available)
+	setChildVisible(w.quickView, available)
 	_ = w.refreshTunnels()
 }
 
@@ -463,7 +504,7 @@ func (w *Window) showConnectionError(err error, hostAlias string) {
 
 func (w *Window) setStatus(message string, isError bool) {
 	_ = w.statusLabel.SetText(message)
-	w.statusLabel.SetVisible(message != "")
+	setChildVisible(w.statusLabel, message != "")
 	if resources, err := w.env.Resources(w.DPI()); err == nil {
 		color := resources.Palette.Success
 		if isError {

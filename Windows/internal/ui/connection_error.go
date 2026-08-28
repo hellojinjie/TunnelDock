@@ -46,7 +46,7 @@ func ShowConnectionError(owner walk.Form, env *UIEnvironment, err error, hostAli
 		return
 	}
 	defer shell.Dispose()
-	shell.Cancel.SetVisible(false)
+	setChildVisible(shell.Cancel, false)
 	layout := walk.NewVBoxLayout()
 	layout.SetMargins(walk.Margins{HNear: 14, VNear: 12, HFar: 14, VFar: 12})
 	layout.SetSpacing(8)

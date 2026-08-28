@@ -37,6 +37,7 @@ func NewCard(parent walk.Container, env *UIEnvironment) (*Card, error) {
 		return fail(err)
 	}
 	card.Content.SetBackground(resources.SurfaceBrush)
+	_ = outerLayout.SetStretchFactor(card.Content, 1)
 	card.unsubscribe = env.Subscribe(func(Appearance) {
 		if refreshed, resourceErr := env.Resources(card.DPI()); resourceErr == nil {
 			card.SetBackground(refreshed.SurfaceBrush)

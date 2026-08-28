@@ -36,6 +36,7 @@ func NewTunnelListView(parent walk.Container, env *UIEnvironment, callbacks Tunn
 	layout := walk.NewVBoxLayout()
 	layout.SetMargins(walk.Margins{})
 	layout.SetSpacing(0)
+	layout.SetAlignment(defaultWindowLayoutPolicy().RowAlignment)
 	if err := root.SetLayout(layout); err != nil {
 		return fail(err)
 	}
@@ -54,7 +55,7 @@ func NewTunnelListView(parent walk.Container, env *UIEnvironment, callbacks Tunn
 	if err != nil {
 		return fail(err)
 	}
-	view.scroll.SetScrollbars(false, true)
+	view.scroll.SetScrollbars(true, true)
 	scrollLayout := walk.NewVBoxLayout()
 	scrollLayout.SetMargins(walk.Margins{})
 	scrollLayout.SetSpacing(6)
@@ -65,8 +66,8 @@ func NewTunnelListView(parent walk.Container, env *UIEnvironment, callbacks Tunn
 	if err != nil {
 		return fail(err)
 	}
-	view.emptyLabel.SetVisible(true)
-	view.scroll.SetVisible(false)
+	setChildVisible(view.emptyLabel, true)
+	setChildVisible(view.scroll, false)
 	view.unsubscribe = env.Subscribe(func(Appearance) {
 		if refreshed, resourceErr := env.Resources(view.DPI()); resourceErr == nil {
 			view.SetBackground(refreshed.WindowBrush)
@@ -128,9 +129,9 @@ func (v *TunnelListView) SetRows(presentations []TunnelRowPresentation) error {
 		}
 	}
 	v.order = next
-	hasRows := len(next) > 0
-	v.emptyLabel.SetVisible(!hasRows)
-	v.scroll.SetVisible(hasRows)
+	visibility := detailVisibilityFor(false, len(next), false)
+	setChildVisible(v.emptyLabel, visibility.EmptyTunnels)
+	setChildVisible(v.scroll, visibility.TunnelScroll)
 	if focusedID != "" {
 		if row := v.rows[focusedID]; row != nil {
 			_ = row.SetFocus()

@@ -195,7 +195,7 @@ func NewQuickForwardView(parent walk.Container, env *UIEnvironment, quick *app.Q
 		return fail(err)
 	}
 	view.validation.SetTextColor(resources.Palette.Failure)
-	view.validation.SetVisible(false)
+	setChildVisible(view.validation, false)
 	view.syncFromModel()
 	return view, nil
 }
@@ -222,7 +222,7 @@ func (v *QuickForwardView) SetBusy(busy bool) {
 
 func (v *QuickForwardView) SetValidation(message string) {
 	_ = v.validation.SetText(message)
-	v.validation.SetVisible(message != "")
+	setChildVisible(v.validation, message != "")
 }
 
 func (v *QuickForwardView) ApplyModelFocus() {
@@ -260,7 +260,8 @@ func (v *QuickForwardView) syncFromModel() {
 		_ = v.protocol.SetCurrentIndex(protocolIndex)
 	}
 	state := PresentQuickForward(v.quick, v.busy)
-	v.advanced.SetVisible(state.AdvancedExpanded)
+	visibility := detailVisibilityFor(false, 0, state.AdvancedExpanded)
+	setChildVisible(v.advanced, visibility.Advanced)
 	v.disclosure.SetExpanded(state.AdvancedExpanded)
 	_ = v.connect.SetText(state.ConnectText)
 	v.connect.SetEnabled(state.ConnectEnabled && v.hostAvailable && v.onConnect != nil)

@@ -115,6 +115,10 @@ func NewSidebarView(parent walk.Container, env *UIEnvironment, callbacks Sidebar
 	toolbarLayout.SetMargins(walk.Margins{})
 	toolbarLayout.SetSpacing(4)
 	_ = toolbar.SetLayout(toolbarLayout)
+	policy := defaultWindowLayoutPolicy()
+	if err := toolbar.SetMinMaxSize(walk.Size{Height: policy.ToolbarHeight}, walk.Size{Height: policy.ToolbarHeight}); err != nil {
+		return fail(err)
+	}
 	for _, action := range []struct {
 		icon IconKind
 		tip  string
@@ -129,11 +133,14 @@ func NewSidebarView(parent walk.Container, env *UIEnvironment, callbacks Sidebar
 			return fail(buttonErr)
 		}
 	}
+	if _, err = walk.NewHSpacer(toolbar); err != nil {
+		return fail(err)
+	}
 	view.scroll, err = walk.NewScrollView(root)
 	if err != nil {
 		return fail(err)
 	}
-	view.scroll.SetScrollbars(false, true)
+	view.scroll.SetScrollbars(true, true)
 	scrollLayout := walk.NewVBoxLayout()
 	scrollLayout.SetMargins(walk.Margins{})
 	scrollLayout.SetSpacing(2)
@@ -154,8 +161,8 @@ func NewSidebarView(parent walk.Container, env *UIEnvironment, callbacks Sidebar
 	if err != nil {
 		return fail(err)
 	}
-	view.missingLabel.SetVisible(false)
-	view.missingContainer.SetVisible(false)
+	setChildVisible(view.missingLabel, false)
+	setChildVisible(view.missingContainer, false)
 	view.unsubscribe = env.Subscribe(func(Appearance) {
 		if refreshed, resourceErr := env.Resources(view.DPI()); resourceErr == nil {
 			view.SetBackground(refreshed.SidebarBrush)
@@ -179,6 +186,7 @@ func newRowContainer(parent walk.Container) (*walk.Composite, error) {
 	layout := walk.NewVBoxLayout()
 	layout.SetMargins(walk.Margins{})
 	layout.SetSpacing(2)
+	layout.SetAlignment(defaultWindowLayoutPolicy().RowAlignment)
 	if err := container.SetLayout(layout); err != nil {
 		container.Dispose()
 		return nil, err
@@ -198,8 +206,8 @@ func (v *SidebarView) SetRows(current, missing []HostRowPresentation) error {
 		return err
 	}
 	visible := len(missing) > 0
-	v.missingLabel.SetVisible(visible)
-	v.missingContainer.SetVisible(visible)
+	setChildVisible(v.missingLabel, visible)
+	setChildVisible(v.missingContainer, visible)
 	v.applySelection()
 	return nil
 }

@@ -101,7 +101,7 @@ func NewDialogShell(owner walk.Form, env *UIEnvironment, spec DialogSpec) (*Dial
 	}
 	shell.Validation.SetFont(resources.CaptionFont)
 	shell.Validation.SetTextColor(resources.Palette.Failure)
-	shell.Validation.SetVisible(false)
+	setChildVisible(shell.Validation, false)
 	buttons, err := walk.NewComposite(dialog)
 	if err != nil {
 		return fail(err)
@@ -155,7 +155,7 @@ func NewDialogShell(owner walk.Form, env *UIEnvironment, spec DialogSpec) (*Dial
 
 func (s *DialogShell) SetValidation(message string, field walk.Widget) {
 	_ = s.Validation.SetText(message)
-	s.Validation.SetVisible(message != "")
+	setChildVisible(s.Validation, message != "")
 	if message != "" && field != nil {
 		_ = field.SetFocus()
 	}

@@ -81,6 +81,9 @@ func (b *IconButton) paint(canvas *walk.Canvas, _ walk.Rectangle) error {
 	}
 	bounds := b.ClientBoundsPixels()
 	brush := resources.SurfaceBrush
+	if err := canvas.FillRectanglePixels(resources.SurfaceBrush, bounds); err != nil {
+		return err
+	}
 	if b.pressed {
 		brush = resources.SelectedBrush
 	} else if b.hovered {
