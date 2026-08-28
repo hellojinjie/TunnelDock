@@ -88,7 +88,7 @@ func (w *HostRowWidget) updateHeight() error {
 		return err
 	}
 	height := resources.Metrics.HostRowHeight
-	return w.SetMinMaxSize(walk.Size{Height: height}, walk.Size{Height: height})
+	return w.SetMinMaxSizePixels(walk.Size{Height: height}, walk.Size{Height: height})
 }
 
 func (w *HostRowWidget) paint(canvas *walk.Canvas, updateBounds walk.Rectangle) error {

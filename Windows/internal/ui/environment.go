@@ -113,6 +113,7 @@ type UIEnvironment struct {
 	cancel      context.CancelFunc
 	done        chan struct{}
 	disposed    bool
+	synchronize func(func())
 }
 
 func NewUIEnvironment() (*UIEnvironment, error) {
@@ -120,10 +121,16 @@ func NewUIEnvironment() (*UIEnvironment, error) {
 }
 
 func newUIEnvironment(source appearanceSource) *UIEnvironment {
+	return newUIEnvironmentWithSynchronizer(source, func(callback func()) {
+		walk.App().Synchronize(callback)
+	})
+}
+
+func newUIEnvironmentWithSynchronizer(source appearanceSource, synchronize func(func())) *UIEnvironment {
 	ctx, cancel := context.WithCancel(context.Background())
 	environment := &UIEnvironment{
 		source: source, appearance: source.Current(), resources: make(map[resourceKey]*UIResources),
-		subscribers: make(map[int]func(Appearance)), cancel: cancel, done: make(chan struct{}),
+		subscribers: make(map[int]func(Appearance)), cancel: cancel, done: make(chan struct{}), synchronize: synchronize,
 	}
 	go environment.watch(ctx)
 	return environment
@@ -162,8 +169,24 @@ func (e *UIEnvironment) ApplyNativeFont(window walk.Window, dpi int) error {
 	return nil
 }
 
+func applyTextScale(window walk.Window, font *walk.Font) {
+	window.SetFont(font)
+	container, isContainer := window.(walk.Container)
+	if !isContainer {
+		return
+	}
+	children := container.Children()
+	for index := 0; index < children.Len(); index++ {
+		applyTextScale(children.At(index), font)
+	}
+}
+
 func (e *UIEnvironment) Subscribe(callback func(Appearance)) func() {
 	e.mu.Lock()
+	if e.disposed {
+		e.mu.Unlock()
+		return func() {}
+	}
 	id := e.nextID
 	e.nextID++
 	e.subscribers[id] = callback
@@ -184,12 +207,24 @@ func (e *UIEnvironment) watch(ctx context.Context) {
 			continue
 		}
 		e.appearance = appearance
-		callbacks := make([]func(Appearance), 0, len(e.subscribers))
-		for _, callback := range e.subscribers {
-			callbacks = append(callbacks, callback)
+		subscriberIDs := make([]int, 0, len(e.subscribers))
+		for id := range e.subscribers {
+			subscriberIDs = append(subscriberIDs, id)
 		}
 		e.mu.Unlock()
-		walk.App().Synchronize(func() {
+		e.synchronize(func() {
+			e.mu.RLock()
+			if e.disposed || e.appearance != appearance {
+				e.mu.RUnlock()
+				return
+			}
+			callbacks := make([]func(Appearance), 0, len(subscriberIDs))
+			for _, id := range subscriberIDs {
+				if callback := e.subscribers[id]; callback != nil {
+					callbacks = append(callbacks, callback)
+				}
+			}
+			e.mu.RUnlock()
 			for _, callback := range callbacks {
 				callback(appearance)
 			}

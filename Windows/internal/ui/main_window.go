@@ -19,7 +19,6 @@ type Window struct {
 	quick   *app.QuickForward
 	manager *tunnel.Manager
 	env     *UIEnvironment
-	ownsEnv bool
 
 	sidebar          *SidebarView
 	detailTitle      *walk.Label
@@ -42,24 +41,6 @@ type Window struct {
 	refreshAction      func()
 	unsubscribe        func()
 	disposed           bool
-}
-
-func NewMainWindow(applicationModel *app.Model) (*Window, error) {
-	return NewMainWindowWithConnector(applicationModel, nil)
-}
-
-func NewMainWindowWithConnector(applicationModel *app.Model, manager *tunnel.Manager) (*Window, error) {
-	env, err := NewUIEnvironment()
-	if err != nil {
-		return nil, err
-	}
-	window, err := NewMainWindowWithEnvironment(applicationModel, manager, env)
-	if err != nil {
-		env.Dispose()
-		return nil, err
-	}
-	window.ownsEnv = true
-	return window, nil
 }
 
 func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.Manager, env *UIEnvironment) (*Window, error) {
@@ -124,7 +105,7 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 	}
 	detailScroll.SetScrollbars(false, true)
 	detailLayout := walk.NewVBoxLayout()
-	detailLayout.SetMargins(walk.Margins{HNear: resources.Metrics.PageMargin, VNear: resources.Metrics.PageMargin, HFar: resources.Metrics.PageMargin, VFar: resources.Metrics.PageMargin})
+	detailLayout.SetMargins(walk.Margins{HNear: 24, VNear: 24, HFar: 24, VFar: 24})
 	detailLayout.SetSpacing(12)
 	if err := detailScroll.SetLayout(detailLayout); err != nil {
 		return fail(err)
@@ -209,12 +190,14 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 	if err := env.ApplyNativeFont(window, window.DPI()); err != nil {
 		return fail(err)
 	}
+	ApplyWindowAppearance(window, env.Appearance())
 	window.detailTitle.SetFont(resources.TitleFont)
 	window.tunnelsTitle.SetFont(resources.MediumFont)
 	window.unsubscribe = env.Subscribe(func(Appearance) {
 		if refreshed, resourceErr := env.Resources(window.DPI()); resourceErr == nil {
 			window.SetBackground(refreshed.WindowBrush)
 			window.statusLabel.SetTextColor(refreshed.Palette.Failure)
+			ApplyWindowAppearance(window, refreshed.Appearance)
 			window.Invalidate()
 		}
 	})
@@ -537,8 +520,4 @@ func (w *Window) Dispose() {
 		w.quickView = nil
 	}
 	w.MainWindow.Dispose()
-	if w.ownsEnv && w.env != nil {
-		w.env.Dispose()
-		w.env = nil
-	}
 }

@@ -1,11 +1,41 @@
 package ui
 
 import (
+	"context"
 	"math"
+	"reflect"
 	"testing"
+	"time"
 
 	"github.com/tailscale/walk"
 )
+
+type controllableAppearanceSource struct {
+	current Appearance
+	updates chan Appearance
+}
+
+func newControllableAppearanceSource(current Appearance) *controllableAppearanceSource {
+	return &controllableAppearanceSource{current: current, updates: make(chan Appearance, 4)}
+}
+
+func (s *controllableAppearanceSource) Current() Appearance { return s.current }
+
+func (s *controllableAppearanceSource) Watch(ctx context.Context) <-chan Appearance {
+	output := make(chan Appearance)
+	go func() {
+		defer close(output)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case value := <-s.updates:
+				output <- value
+			}
+		}
+	}()
+	return output
+}
 
 func TestPaletteForProvidesDistinctReadableThemes(t *testing.T) {
 	light := PaletteFor(AppearanceLight)
@@ -29,6 +59,33 @@ func TestMetricsForDPIScalesLogicalValues(t *testing.T) {
 	}
 	if at144.CardRadius != 12 || at144.PageMargin != 36 {
 		t.Fatalf("144 DPI metrics = %#v", at144)
+	}
+}
+
+func TestUIEnvironmentNotifiesOnceAndStopsAfterDispose(t *testing.T) {
+	source := newControllableAppearanceSource(AppearanceLight)
+	env := newUIEnvironmentWithSynchronizer(source, func(callback func()) { callback() })
+	got := make(chan Appearance, 4)
+	unsubscribe := env.Subscribe(func(value Appearance) { got <- value })
+	source.updates <- AppearanceDark
+	source.updates <- AppearanceDark
+	var values []Appearance
+	select {
+	case value := <-got:
+		values = append(values, value)
+	case <-time.After(time.Second):
+		t.Fatal("appearance notification timed out")
+	}
+	unsubscribe()
+	env.Dispose()
+	source.updates <- AppearanceLight
+	select {
+	case value := <-got:
+		values = append(values, value)
+	case <-time.After(20 * time.Millisecond):
+	}
+	if !reflect.DeepEqual(values, []Appearance{AppearanceDark}) {
+		t.Fatalf("notifications = %#v", values)
 	}
 }
 

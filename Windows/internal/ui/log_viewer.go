@@ -81,11 +81,13 @@ func ShowTunnelLog(owner walk.Form, env *UIEnvironment, manager *tunnel.Manager,
 	}
 	title.SetFont(resources.TitleFont)
 	text.SetFont(resources.MonoFont)
+	ApplyWindowAppearance(window, env.Appearance())
 	ctx, cancel := context.WithCancel(context.Background())
-	unsubscribe := env.Subscribe(func(Appearance) {
+	unsubscribe := env.Subscribe(func(appearance Appearance) {
 		if refreshed, resourceErr := env.Resources(window.DPI()); resourceErr == nil {
 			window.SetBackground(refreshed.WindowBrush)
 			text.SetFont(refreshed.MonoFont)
+			ApplyWindowAppearance(window, appearance)
 			window.Invalidate()
 		}
 	})

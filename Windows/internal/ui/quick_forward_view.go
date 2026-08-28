@@ -291,7 +291,7 @@ func newQuickDisclosure(parent walk.Container, env *UIEnvironment, toggle func()
 		return nil, err
 	}
 	height := resources.Metrics.ActionHeight
-	if err := button.SetMinMaxSize(walk.Size{Height: height}, walk.Size{Height: height}); err != nil {
+	if err := button.SetMinMaxSizePixels(walk.Size{Height: height}, walk.Size{Height: height}); err != nil {
 		button.Dispose()
 		return nil, err
 	}

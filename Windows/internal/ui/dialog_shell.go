@@ -32,12 +32,14 @@ type DialogSpec struct {
 
 type DialogShell struct {
 	*walk.Dialog
-	Content    *walk.Composite
-	Validation *walk.Label
-	Primary    *walk.PushButton
-	Cancel     *walk.PushButton
-	card       *Card
-	disposed   bool
+	Content     *walk.Composite
+	Validation  *walk.Label
+	Primary     *walk.PushButton
+	Cancel      *walk.PushButton
+	card        *Card
+	env         *UIEnvironment
+	unsubscribe func()
+	disposed    bool
 }
 
 func NewDialogShell(owner walk.Form, env *UIEnvironment, spec DialogSpec) (*DialogShell, error) {
@@ -51,7 +53,7 @@ func NewDialogShell(owner walk.Form, env *UIEnvironment, spec DialogSpec) (*Dial
 	if err != nil {
 		return nil, err
 	}
-	shell := &DialogShell{Dialog: dialog}
+	shell := &DialogShell{Dialog: dialog, env: env}
 	fail := func(cause error) (*DialogShell, error) {
 		shell.Dispose()
 		return nil, cause
@@ -140,6 +142,14 @@ func NewDialogShell(owner walk.Form, env *UIEnvironment, spec DialogSpec) (*Dial
 		return fail(err)
 	}
 	shell.Validation.SetFont(resources.CaptionFont)
+	ApplyWindowAppearance(dialog, env.Appearance())
+	shell.unsubscribe = env.Subscribe(func(appearance Appearance) {
+		if refreshed, resourceErr := env.Resources(dialog.DPI()); resourceErr == nil {
+			dialog.SetBackground(refreshed.WindowBrush)
+			shell.Validation.SetTextColor(refreshed.Palette.Failure)
+			ApplyWindowAppearance(dialog, appearance)
+		}
+	})
 	return shell, nil
 }
 
@@ -156,6 +166,10 @@ func (s *DialogShell) Dispose() {
 		return
 	}
 	s.disposed = true
+	if s.unsubscribe != nil {
+		s.unsubscribe()
+		s.unsubscribe = nil
+	}
 	if s.card != nil {
 		s.card.Dispose()
 		s.card = nil

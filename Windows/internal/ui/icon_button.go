@@ -31,7 +31,7 @@ func NewIconButton(parent walk.Container, env *UIEnvironment, icon IconKind, too
 		return nil, err
 	}
 	size := resources.Metrics.ActionHeight
-	if err := button.SetMinMaxSize(walk.Size{Width: size, Height: size}, walk.Size{Width: size, Height: size}); err != nil {
+	if err := button.SetMinMaxSizePixels(walk.Size{Width: size, Height: size}, walk.Size{Width: size, Height: size}); err != nil {
 		button.Dispose()
 		return nil, err
 	}
