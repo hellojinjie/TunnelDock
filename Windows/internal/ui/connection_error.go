@@ -9,17 +9,18 @@ import (
 )
 
 type ConnectionErrorPresentation struct {
-	Title   string
-	Summary string
-	Action  string
-	Details string
+	Title                  string
+	Summary                string
+	Action                 string
+	Details                string
+	RequiresInteractiveSSH bool
 }
 
 func PresentConnectionError(err error) ConnectionErrorPresentation {
 	var failure *sshclient.ConnectionFailure
 	if errors.As(err, &failure) {
 		return ConnectionErrorPresentation{
-			Title: "Connection failed", Summary: failure.Error(), Action: failure.SuggestedAction(), Details: failure.Details(),
+			Title: "Connection failed", Summary: failure.Error(), Action: failure.SuggestedAction(), Details: failure.Details(), RequiresInteractiveSSH: failure.RequiresInteractiveSSH(),
 		}
 	}
 	if errors.Is(err, tunnel.ErrPortUnavailable) {
@@ -34,7 +35,7 @@ func PresentConnectionError(err error) ConnectionErrorPresentation {
 	}
 }
 
-func ShowConnectionError(owner walk.Form, err error) {
+func ShowConnectionError(owner walk.Form, err error, hostAlias string) {
 	presentation := PresentConnectionError(err)
 	dialog, createErr := walk.NewDialogWithFixedSize(owner)
 	if createErr != nil {
@@ -64,7 +65,28 @@ func ShowConnectionError(owner walk.Form, err error) {
 	_ = details.SetReadOnly(true)
 	_ = details.SetText(presentation.Details)
 	_ = details.SetMinMaxSize(walk.Size{Width: 560, Height: 160}, walk.Size{Width: 560, Height: 160})
-	closeButton, buttonErr := walk.NewPushButton(dialog)
+	buttons, buttonsErr := walk.NewComposite(dialog)
+	if buttonsErr != nil {
+		showDialogError(owner, err)
+		return
+	}
+	_ = buttons.SetLayout(walk.NewHBoxLayout())
+	if presentation.RequiresInteractiveSSH && sshclient.CanStartInteractiveSSH(hostAlias) {
+		terminalButton, terminalErr := walk.NewPushButton(buttons)
+		if terminalErr != nil {
+			showDialogError(owner, err)
+			return
+		}
+		_ = terminalButton.SetText("Open Terminal: " + sshclient.InteractiveSSHCommand(hostAlias))
+		terminalButton.Clicked().Attach(func() {
+			if startErr := sshclient.StartInteractiveSSH(hostAlias); startErr != nil {
+				showDialogError(dialog, startErr)
+				return
+			}
+			dialog.Accept()
+		})
+	}
+	closeButton, buttonErr := walk.NewPushButton(buttons)
 	if buttonErr != nil {
 		showDialogError(owner, err)
 		return

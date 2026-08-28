@@ -10,7 +10,7 @@ import (
 
 func TestPresentConnectionErrorIncludesReasonActionAndDetails(t *testing.T) {
 	presentation := PresentConnectionError(sshclient.NewConnectionFailure("Permission denied (publickey).", sshclient.ErrProcessExited))
-	if presentation.Title != "Connection failed" || presentation.Summary != "Authentication failed." || presentation.Action == "" || presentation.Details != "Permission denied (publickey)." {
+	if presentation.Title != "Connection failed" || presentation.Summary != "Authentication failed." || presentation.Action == "" || presentation.Details != "Permission denied (publickey)." || !presentation.RequiresInteractiveSSH {
 		t.Fatalf("PresentConnectionError() = %#v", presentation)
 	}
 }

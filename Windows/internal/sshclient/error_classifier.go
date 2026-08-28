@@ -88,6 +88,18 @@ func (failure *ConnectionFailure) Details() string {
 	return "No additional output was received from ssh.exe."
 }
 
+// RequiresInteractiveSSH indicates that a normal interactive ssh session can
+// complete a blocked trust or authentication step that TunnelDock deliberately
+// runs in BatchMode.
+func (failure *ConnectionFailure) RequiresInteractiveSSH() bool {
+	switch failure.Kind {
+	case ErrorAuthenticationFailed, ErrorHostVerificationRequired, ErrorUnexpectedExit:
+		return true
+	default:
+		return false
+	}
+}
+
 func ClassifyOpenSSHError(stderr string, launchErr error) ClassifiedError {
 	classified := ClassifiedError{RawStderr: stderr}
 	if errors.Is(launchErr, ErrOpenSSHNotInstalled) {

@@ -63,3 +63,12 @@ func TestConnectionFailureMakesStartupTimeoutSpecific(t *testing.T) {
 		t.Fatalf("Details() = %q", failure.Details())
 	}
 }
+
+func TestConnectionFailureRequestsInteractiveSSHOnlyWhenUseful(t *testing.T) {
+	if !NewConnectionFailure("Permission denied (publickey).", ErrProcessExited).RequiresInteractiveSSH() {
+		t.Fatal("authentication failure should request interactive SSH")
+	}
+	if NewConnectionFailure("ssh: connect to host server port 22: Connection refused", ErrProcessExited).RequiresInteractiveSSH() {
+		t.Fatal("connection refusal should not request interactive SSH")
+	}
+}
