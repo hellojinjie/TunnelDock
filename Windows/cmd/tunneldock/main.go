@@ -79,7 +79,7 @@ func main() {
 	mainWindow.SetSettingsAction(tray.ShowSettings)
 	mainWindow.SetSidebarActions(
 		func() {
-			ui.ShowAddHostDialog(mainWindow, func(input ui.SSHHostInput) error {
+			ui.ShowAddHostDialog(mainWindow, environment, func(input ui.SSHHostInput) error {
 				if err := runtime.AddSSHHost(input); err != nil {
 					return err
 				}

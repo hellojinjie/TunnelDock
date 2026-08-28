@@ -16,8 +16,6 @@ type SSHHostInput struct {
 	Port     uint16
 }
 
-// Validate keeps the config-writing boundary independent from native controls,
-// so both the dialog and the runtime can reject malformed Host blocks.
 func (input SSHHostInput) Validate() error {
 	if input.Alias == "" || input.Hostname == "" {
 		return fmt.Errorf("Host and HostName are required")
@@ -36,7 +34,6 @@ func (input SSHHostInput) Validate() error {
 	return nil
 }
 
-// ConfigBlock returns the minimal OpenSSH block created by Quick Add Host.
 func (input SSHHostInput) ConfigBlock() string {
 	block := fmt.Sprintf("Host %s\n    HostName %s\n    Port %d\n", input.Alias, input.Hostname, input.Port)
 	if input.User != "" {
@@ -45,74 +42,53 @@ func (input SSHHostInput) ConfigBlock() string {
 	return block
 }
 
-// ShowAddHostDialog implements the compact native equivalent of the macOS
-// Quick Add Host sheet. The callback owns persistence and config reloading.
-func ShowAddHostDialog(owner walk.Form, submit func(SSHHostInput) error) {
-	dialog, err := walk.NewDialogWithFixedSize(owner)
+// ShowAddHostDialog keeps parsing, persistence errors, and focus inside the
+// modal sheet. The dialog accepts only after submit succeeds.
+func ShowAddHostDialog(owner walk.Form, env *UIEnvironment, submit func(SSHHostInput) error) {
+	shell, err := NewDialogShell(owner, env, DialogSpec{
+		Title: "Add SSH Host", Description: "Add a compact Host entry to your OpenSSH config.",
+		PrimaryText: "Add Host", Size: walk.Size{Width: 440, Height: 360},
+	})
 	if err != nil {
 		showDialogError(owner, err)
 		return
 	}
-	defer dialog.Dispose()
-	_ = dialog.SetTitle("Add SSH Host")
-	_ = dialog.SetSize(walk.Size{Width: 400, Height: 260})
-	if err := dialog.SetLayout(walk.NewVBoxLayout()); err != nil {
+	defer shell.Dispose()
+	layout := walk.NewVBoxLayout()
+	layout.SetMargins(walk.Margins{HNear: 14, VNear: 12, HFar: 14, VFar: 12})
+	layout.SetSpacing(8)
+	if err := shell.Content.SetLayout(layout); err != nil {
 		showDialogError(owner, err)
 		return
 	}
 	fields := make(map[string]*walk.LineEdit)
-	for _, field := range []struct {
-		label string
-		key   string
-		value string
-	}{
-		{"Host", "alias", ""},
-		{"HostName", "hostname", ""},
-		{"User", "user", ""},
-		{"Port", "port", "22"},
+	for _, field := range []struct{ label, key, value string }{
+		{"Host", "alias", ""}, {"HostName", "hostname", ""}, {"User", "user", ""}, {"Port", "port", "22"},
 	} {
-		input, err := addDialogField(dialog, field.label, field.value)
-		if err != nil {
-			showDialogError(owner, err)
+		input, fieldErr := addDialogField(shell.Content, field.label, field.value)
+		if fieldErr != nil {
+			showDialogError(owner, fieldErr)
 			return
 		}
 		fields[field.key] = input
 	}
-	buttons, err := walk.NewComposite(dialog)
-	if err != nil {
-		showDialogError(owner, err)
-		return
-	}
-	_ = buttons.SetLayout(walk.NewHBoxLayout())
-	add, err := walk.NewPushButton(buttons)
-	if err != nil {
-		showDialogError(owner, err)
-		return
-	}
-	_ = add.SetText("Add Host")
-	add.Clicked().Attach(dialog.Accept)
-	cancel, err := walk.NewPushButton(buttons)
-	if err != nil {
-		showDialogError(owner, err)
-		return
-	}
-	_ = cancel.SetText("Cancel")
-	cancel.Clicked().Attach(dialog.Cancel)
-	if err := ApplyStandardTextScale(dialog); err != nil {
-		showDialogError(owner, err)
-		return
-	}
-	if dialog.Run() != walk.DlgCmdOK {
-		return
-	}
-	input, err := parseSSHHostInput(fields)
-	if err != nil {
-		showDialogError(owner, err)
-		return
-	}
-	if err := submit(input); err != nil {
-		showDialogError(owner, err)
-	}
+	shell.Primary.Clicked().Attach(func() {
+		input, parseErr := parseSSHHostInput(fields)
+		if parseErr != nil {
+			shell.SetValidation(parseErr.Error(), hostValidationField(fields, parseErr.Error()))
+			return
+		}
+		if submit != nil {
+			if submitErr := submit(input); submitErr != nil {
+				shell.SetValidation(submitErr.Error(), fields["alias"])
+				return
+			}
+		}
+		shell.SetValidation("", nil)
+		shell.Accept()
+	})
+	_ = fields["alias"].SetFocus()
+	shell.Run()
 }
 
 func parseSSHHostInput(fields map[string]*walk.LineEdit) (SSHHostInput, error) {
@@ -128,6 +104,19 @@ func parseSSHHostInput(fields map[string]*walk.LineEdit) (SSHHostInput, error) {
 		return SSHHostInput{}, err
 	}
 	return input, nil
+}
+
+func hostValidationField(fields map[string]*walk.LineEdit, message string) walk.Widget {
+	switch {
+	case strings.HasPrefix(message, "Port"):
+		return fields["port"]
+	case fields["alias"].Text() == "" || strings.HasPrefix(message, "Host ") || strings.Contains(message, "Host cannot"):
+		return fields["alias"]
+	case fields["hostname"].Text() == "" || strings.HasPrefix(message, "HostName"):
+		return fields["hostname"]
+	default:
+		return fields["user"]
+	}
 }
 
 func showDialogError(owner walk.Form, err error) {

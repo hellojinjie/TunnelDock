@@ -415,7 +415,7 @@ func (w *Window) onRename(runtimeID string) {
 	if runtime.Definition.Name != nil {
 		initial = *runtime.Definition.Name
 	}
-	name, accepted, err := promptTunnelRename(w, initial)
+	name, accepted, err := promptTunnelRename(w, w.env, initial)
 	if err != nil {
 		w.setStatus(err.Error(), true)
 	} else if accepted {
@@ -432,7 +432,7 @@ func (w *Window) onEdit(runtimeID string) {
 	if !exists || runtime.Temporary {
 		return
 	}
-	definition, accepted, err := promptTunnelEdit(w, runtime.Definition)
+	definition, accepted, err := promptTunnelEdit(w, w.env, runtime.Definition)
 	if err != nil {
 		w.setStatus(err.Error(), true)
 	} else if accepted {
