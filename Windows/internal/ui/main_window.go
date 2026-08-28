@@ -183,6 +183,16 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 	if err != nil {
 		return nil, err
 	}
+	if err := ApplyStandardTextScale(window); err != nil {
+		window.Dispose()
+		return nil, err
+	}
+	headingFont, err := walk.NewFont("MS Shell Dlg 2", 18, walk.FontBold)
+	if err != nil {
+		window.Dispose()
+		return nil, err
+	}
+	window.detailTitle.SetFont(headingFont)
 
 	if err := window.refreshHosts(); err != nil {
 		window.Dispose()

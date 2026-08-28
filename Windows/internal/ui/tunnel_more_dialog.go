@@ -76,6 +76,9 @@ func promptTunnelMore(owner walk.Form, runtime model.TunnelRuntime) (tunnelMoreA
 	}
 	_ = closeButton.SetText("Close")
 	closeButton.Clicked().Attach(dialog.Cancel)
+	if err := ApplyStandardTextScale(dialog); err != nil {
+		return tunnelMoreNone, err
+	}
 	dialog.Run()
 	return selected, nil
 }

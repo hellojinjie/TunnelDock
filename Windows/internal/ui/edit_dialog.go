@@ -80,6 +80,9 @@ func promptTunnelEdit(owner walk.Form, initial model.TunnelDefinition) (model.Tu
 	}
 	_ = cancel.SetText("Cancel")
 	cancel.Clicked().Attach(dialog.Cancel)
+	if err := ApplyStandardTextScale(dialog); err != nil {
+		return model.TunnelDefinition{}, false, err
+	}
 	if dialog.Run() != walk.DlgCmdOK {
 		return model.TunnelDefinition{}, false, nil
 	}

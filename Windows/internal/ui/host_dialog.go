@@ -98,6 +98,10 @@ func ShowAddHostDialog(owner walk.Form, submit func(SSHHostInput) error) {
 	}
 	_ = cancel.SetText("Cancel")
 	cancel.Clicked().Attach(dialog.Cancel)
+	if err := ApplyStandardTextScale(dialog); err != nil {
+		showDialogError(owner, err)
+		return
+	}
 	if dialog.Run() != walk.DlgCmdOK {
 		return
 	}

@@ -32,6 +32,9 @@ func ShowTunnelLog(owner walk.Form, manager *tunnel.Manager, runtimeID string) e
 	if err := text.SetText("Loading log..."); err != nil {
 		return err
 	}
+	if err := ApplyStandardTextScale(window); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	window.Closing().Attach(func(_ *bool, _ walk.CloseReason) { cancel() })
 	window.Show()

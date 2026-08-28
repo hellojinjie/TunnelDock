@@ -110,6 +110,10 @@ func (t *Tray) ShowSettings() {
 	}
 	_ = cancel.SetText("Cancel")
 	cancel.Clicked().Attach(dialog.Cancel)
+	if err := ApplyStandardTextScale(dialog); err != nil {
+		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
+		return
+	}
 	if dialog.Run() != walk.DlgCmdOK {
 		return
 	}

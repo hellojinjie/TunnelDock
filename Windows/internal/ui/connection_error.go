@@ -93,5 +93,9 @@ func ShowConnectionError(owner walk.Form, err error, hostAlias string) {
 	}
 	_ = closeButton.SetText("Close")
 	closeButton.Clicked().Attach(dialog.Accept)
+	if createErr = ApplyStandardTextScale(dialog); createErr != nil {
+		showDialogError(owner, err)
+		return
+	}
 	_ = dialog.Run()
 }

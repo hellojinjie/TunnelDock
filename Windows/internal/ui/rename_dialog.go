@@ -47,6 +47,9 @@ func promptTunnelRename(owner walk.Form, initial string) (string, bool, error) {
 	}
 	_ = cancel.SetText("Cancel")
 	cancel.Clicked().Attach(dialog.Cancel)
+	if err := ApplyStandardTextScale(dialog); err != nil {
+		return "", false, err
+	}
 	if dialog.Run() != walk.DlgCmdOK {
 		return "", false, nil
 	}
