@@ -67,13 +67,13 @@ Modify:
 - Windows/internal/ui/connection_error.go — use the shared error dialog.
 - Windows/internal/ui/log_viewer.go — add themed header, monospace log view, and lifecycle cleanup.
 - Windows/internal/ui/tray.go — use the unified settings dialog and shared environment.
-- Windows/internal/ui/text_scale.go — delegate font application to UIEnvironment, then remove its old global-font allocation.
 - Windows/cmd/tunneldock/main.go — create and dispose UIEnvironment and pass it to windows and dialogs.
 - Windows/docs/manual-acceptance.md — add the visual, DPI, theme, and keyboard matrix.
 
 Delete after callers migrate:
 
 - Windows/internal/ui/tunnel_more_dialog.go — replaced by the tunnel row's native popup menu.
+- Windows/internal/ui/text_scale.go — replaced by UIEnvironment-owned fonts.
 
 ---
 
@@ -182,7 +182,7 @@ type TunnelRowPresentation struct {
 }
 ~~~
 
-Make PresentTunnelRows derive every action state from the runtime plus the matching host's availability. Keep TunnelsForHost and TunnelForRuntimeID as pure lookup helpers. Remove HostTableRow, TunnelTableRow, HostTableRows, TunnelTableRows, TunnelListRows, and their table-specific tests.
+Make PresentTunnelRows derive every action state from the runtime plus the matching host's availability. Keep TunnelsForHost and TunnelForRuntimeID as pure lookup helpers. Retain HostTableRow, TunnelTableRow, HostTableRows, TunnelTableRows, and TunnelListRows as temporary compatibility adapters because the old main window still consumes them. Task 8 removes those adapters immediately after switching the main window to custom lists.
 
 - [ ] **Step 4: Run all UI package tests**
 
@@ -210,7 +210,6 @@ git commit -m "refactor(windows): add immutable UI presentations"
 - Create: Windows/internal/ui/theme_test.go
 - Create: Windows/internal/ui/theme_windows.go
 - Create: Windows/internal/ui/environment.go
-- Modify: Windows/internal/ui/text_scale.go
 
 **Interfaces:**
 - Consumes: walk.Color, walk.Font, windows/registry.
@@ -312,7 +311,7 @@ type UIEnvironment struct {
 }
 ~~~
 
-UIEnvironment marshals subscriber callbacks through walk.App().Synchronize. UIResources caches fonts, solid brushes, and pens by appearance and DPI; Dispose releases them exactly once. Replace ApplyStandardTextScale's unowned font allocation with e.ApplyNativeFont(window, dpi).
+UIEnvironment marshals subscriber callbacks through walk.App().Synchronize. UIResources caches fonts, solid brushes, and pens by appearance and DPI; Dispose releases them exactly once. Add e.ApplyNativeFont(window, dpi), but leave ApplyStandardTextScale unchanged until every old dialog caller migrates in Tasks 8 through 10.
 
 - [ ] **Step 5: Run theme tests and the full UI package**
 
@@ -328,7 +327,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ~~~powershell
-git add Windows/internal/ui/theme.go Windows/internal/ui/theme_test.go Windows/internal/ui/theme_windows.go Windows/internal/ui/environment.go Windows/internal/ui/text_scale.go
+git add Windows/internal/ui/theme.go Windows/internal/ui/theme_test.go Windows/internal/ui/theme_windows.go Windows/internal/ui/environment.go
 git commit -m "feat(windows): add adaptive UI theme system"
 ~~~
 
@@ -605,7 +604,6 @@ git commit -m "feat(windows): replace host tables with custom sidebar rows"
 - Modify: Windows/internal/ui/tunnel_list.go
 - Modify: Windows/internal/ui/tunnel_actions.go
 - Modify: Windows/internal/ui/tunnel_actions_test.go
-- Delete: Windows/internal/ui/tunnel_more_dialog.go
 
 **Interfaces:**
 - Consumes: TunnelRowPresentation, TunnelRowLayout, ReconcileRows, UIEnvironment.
@@ -688,9 +686,9 @@ func (m TunnelMenuModel) Enabled(item TunnelMenuItem) bool
 
 Host a vertical row stack in ScrollView with horizontal scrolling disabled. Reconcile by runtime ID, keep row widgets alive when IDs remain, update only changed presentations, and preserve scroll and focused runtime ID. Draw separators between rows inside the row widgets so no separate separator widgets disturb reconciliation.
 
-- [ ] **Step 5: Remove detached-action logic**
+- [ ] **Step 5: Keep the old main-window adapter compiling**
 
-Delete promptTunnelMore and remove the main window's selectedTunnelID, selectedTemporary, tunnelActionButton, browserButton, and moreButton workflow. Keep TunnelBrowserURL and the manager action functions used by callbacks.
+Keep promptTunnelMore plus the old main window's selectedTunnelID, selectedTemporary, tunnelActionButton, browserButton, and moreButton workflow unchanged for this commit. Keep TunnelBrowserURL and the manager action functions used by the new callbacks. Task 8 removes the compatibility UI after NewMainWindowWithEnvironment consumes TunnelListView.
 
 - [ ] **Step 6: Run tests**
 
@@ -706,7 +704,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ~~~powershell
-git add Windows/internal/ui/tunnel_row.go Windows/internal/ui/tunnel_list_view.go Windows/internal/ui/tunnel_list_view_test.go Windows/internal/ui/tunnel_list.go Windows/internal/ui/tunnel_actions.go Windows/internal/ui/tunnel_actions_test.go Windows/internal/ui/tunnel_more_dialog.go
+git add Windows/internal/ui/tunnel_row.go Windows/internal/ui/tunnel_list_view.go Windows/internal/ui/tunnel_list_view_test.go Windows/internal/ui/tunnel_list.go Windows/internal/ui/tunnel_actions.go Windows/internal/ui/tunnel_actions_test.go
 git commit -m "feat(windows): add inline custom tunnel rows"
 ~~~
 
@@ -800,12 +798,20 @@ git commit -m "feat(windows): add macOS-style quick forward card"
 - Modify: Windows/internal/ui/main_window.go
 - Modify: Windows/internal/ui/host_detail.go
 - Modify: Windows/internal/ui/host_detail_test.go
+- Modify: Windows/internal/ui/host_sidebar.go
+- Modify: Windows/internal/ui/host_sidebar_test.go
+- Modify: Windows/internal/ui/tunnel_list.go
+- Modify: Windows/internal/ui/tunnel_list_test.go
+- Modify: Windows/internal/ui/tunnel_actions.go
+- Modify: Windows/cmd/tunneldock/main.go
+- Delete: Windows/internal/ui/tunnel_more_dialog.go
 - Create: Windows/internal/ui/ui_smoke_windows_test.go
 
 **Interfaces:**
 - Consumes: UIEnvironment, SidebarView, TunnelListView, QuickForwardView, Card, presentation functions.
 - Produces:
   - func NewMainWindowWithEnvironment(model *app.Model, manager *tunnel.Manager, env *UIEnvironment) (*Window, error).
+  - func (w *Window) Environment() *UIEnvironment.
   - Existing NewMainWindow and NewMainWindowWithConnector wrappers remain available for tests and callers until Task 11 migrates main.go.
 
 - [ ] **Step 1: Write the first hidden-window smoke test**
@@ -858,15 +864,21 @@ Set the logical default and minimum sizes from the spec. Use the existing select
 
 Set the sidebar ideal width to 240 logical pixels with a 210 minimum and 320 maximum. Give the detail page 24 logical pixels of outer margin and constrain its card column to approximately 760 logical pixels while allowing the surrounding ScrollView to expand.
 
-- [ ] **Step 4: Wire row callbacks to existing manager operations**
+- [ ] **Step 4: Wire the shared environment into the application entry**
+
+Create UIEnvironment after walk.InitApp, defer Dispose after all owned UI windows, and construct the main window with NewMainWindowWithEnvironment. Keep tray and dialog signatures unchanged in this task; later tasks retrieve the same instance through mainWindow.Environment while migrating those call sites.
+
+- [ ] **Step 5: Wire row callbacks to existing manager operations**
 
 Move the current onTunnelAction, onOpenBrowser, onSaveTemporary, onRename, onEdit, onDelete, and onViewLog behavior into callbacks keyed by runtime ID. Background connect operations set only that row busy and synchronize completion back to the UI thread. Keep the current connection-error presentation.
 
-- [ ] **Step 5: Preserve page state on refresh**
+- [ ] **Step 6: Preserve page state on refresh**
 
 RefreshHosts updates sidebar presentations, keeps the selected alias when possible, and updates header details. RefreshTunnels updates TunnelListView presentations without clearing focus or scroll. All Tunnels continues to show manager snapshots; host pages use TunnelsForHost.
 
-- [ ] **Step 6: Run tests**
+- [ ] **Step 7: Remove compatibility UI and run tests**
+
+Delete promptTunnelMore, remove the detached selected-tunnel button bar, and remove HostTableRow, TunnelTableRow, HostTableRows, TunnelTableRows, and TunnelListRows with their table-specific assertions. Retain the pure presentation, filtering, and ID lookup helpers.
 
 Run:
 
@@ -877,10 +889,10 @@ go test ./internal/ui -count=1
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ~~~powershell
-git add Windows/internal/ui/main_window.go Windows/internal/ui/host_detail.go Windows/internal/ui/host_detail_test.go Windows/internal/ui/ui_smoke_windows_test.go
+git add Windows/internal/ui/main_window.go Windows/internal/ui/host_detail.go Windows/internal/ui/host_detail_test.go Windows/internal/ui/host_sidebar.go Windows/internal/ui/host_sidebar_test.go Windows/internal/ui/tunnel_list.go Windows/internal/ui/tunnel_list_test.go Windows/internal/ui/tunnel_actions.go Windows/internal/ui/tunnel_more_dialog.go Windows/internal/ui/ui_smoke_windows_test.go Windows/cmd/tunneldock/main.go
 git commit -m "feat(windows): rebuild main window with custom components"
 ~~~
 
@@ -895,6 +907,8 @@ git commit -m "feat(windows): rebuild main window with custom components"
 - Modify: Windows/internal/ui/host_dialog_test.go
 - Modify: Windows/internal/ui/edit_dialog.go
 - Modify: Windows/internal/ui/rename_dialog.go
+- Modify: Windows/internal/ui/main_window.go
+- Modify: Windows/cmd/tunneldock/main.go
 
 **Interfaces:**
 - Consumes: UIEnvironment, Card, existing SSHHostInput validation and tunnel definition validation.
@@ -952,6 +966,8 @@ The shell creates title, description, card content, inline validation, right-ali
 
 Do not attach the primary button directly to dialog.Accept. Its click handler parses and validates while the dialog remains open. On failure, call SetValidation and SetFocus on the first invalid control. On success, call submit or return the updated definition, then Accept.
 
+Update main.go's Add Host call and main_window.go's Edit and Rename calls to pass mainWindow.Environment so the package remains compiling at the end of this task.
+
 - [ ] **Step 5: Migrate Rename**
 
 Select all initial text after showing the dialog, reject control characters through the model's existing rename path, and keep Enter/Esc behavior through default and cancel buttons.
@@ -970,7 +986,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ~~~powershell
-git add Windows/internal/ui/dialog_shell.go Windows/internal/ui/dialog_shell_test.go Windows/internal/ui/host_dialog.go Windows/internal/ui/host_dialog_test.go Windows/internal/ui/edit_dialog.go Windows/internal/ui/rename_dialog.go
+git add Windows/internal/ui/dialog_shell.go Windows/internal/ui/dialog_shell_test.go Windows/internal/ui/host_dialog.go Windows/internal/ui/host_dialog_test.go Windows/internal/ui/edit_dialog.go Windows/internal/ui/rename_dialog.go Windows/internal/ui/main_window.go Windows/cmd/tunneldock/main.go
 git commit -m "feat(windows): unify editable dialogs"
 ~~~
 
@@ -983,9 +999,11 @@ git commit -m "feat(windows): unify editable dialogs"
 - Modify: Windows/internal/ui/connection_error.go
 - Modify: Windows/internal/ui/connection_error_test.go
 - Modify: Windows/internal/ui/tray.go
+- Modify: Windows/internal/ui/main_window.go
 - Modify: Windows/internal/ui/log_viewer.go
 - Modify: Windows/internal/ui/log_viewer_test.go
 - Modify: Windows/internal/ui/ui_smoke_windows_test.go
+- Modify: Windows/cmd/tunneldock/main.go
 
 **Interfaces:**
 - Consumes: DialogShell, UIEnvironment, app.TrayController, tunnel.Manager.
@@ -1036,6 +1054,8 @@ Expected: FAIL because the presentation functions are undefined.
 
 Use DialogShell for connection errors, including summary, suggested action, read-only technical details, Close, and conditional Open SSH Terminal. Use ConfirmDeleteTunnel for deletions and show the tunnel name. Keep running-tunnel deletion disabled before the confirmation is reachable.
 
+Update main_window.go to pass its environment to errors, confirmations, and logs. Update main.go and NewTray so settings uses the same process-wide environment.
+
 - [ ] **Step 4: Rebuild Settings**
 
 Use a card row with the tray checkbox plus an appearance explanation. The dialog has a Close button rather than Save and Cancel. On each checkbox change, call TrayController.SetVisible and NotifyIcon.SetVisible immediately; if either operation fails, restore the previous checkbox value and show inline validation. Keep the existing safeguard that disabling the tray leaves a visible taskbar re-entry point.
@@ -1062,7 +1082,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit**
 
 ~~~powershell
-git add Windows/internal/ui/confirm_dialog.go Windows/internal/ui/connection_error.go Windows/internal/ui/connection_error_test.go Windows/internal/ui/tray.go Windows/internal/ui/log_viewer.go Windows/internal/ui/log_viewer_test.go Windows/internal/ui/ui_smoke_windows_test.go
+git add Windows/internal/ui/confirm_dialog.go Windows/internal/ui/connection_error.go Windows/internal/ui/connection_error_test.go Windows/internal/ui/tray.go Windows/internal/ui/main_window.go Windows/internal/ui/log_viewer.go Windows/internal/ui/log_viewer_test.go Windows/internal/ui/ui_smoke_windows_test.go Windows/cmd/tunneldock/main.go
 git commit -m "feat(windows): unify secondary windows and dialogs"
 ~~~
 
@@ -1076,6 +1096,7 @@ git commit -m "feat(windows): unify secondary windows and dialogs"
 - Modify: Windows/internal/ui/tray.go
 - Modify: Windows/internal/ui/environment.go
 - Modify: Windows/internal/ui/ui_smoke_windows_test.go
+- Delete: Windows/internal/ui/text_scale.go
 
 **Interfaces:**
 - Consumes: all components from Tasks 1 through 10.
@@ -1113,7 +1134,7 @@ Expected: FAIL until lifecycle semantics are complete.
 
 - [ ] **Step 3: Migrate application entry wiring**
 
-Create UIEnvironment immediately after walk.InitApp, defer Dispose after all owned windows are disposed, and pass it to NewMainWindowWithEnvironment, NewTray, ShowAddHostDialog, settings, errors, edits, renames, confirmations, and logs.
+Verify the UIEnvironment created in Task 8 is shared by NewMainWindowWithEnvironment, NewTray, ShowAddHostDialog, settings, errors, edits, renames, confirmations, and logs. Remove any compatibility constructor that creates an unmanaged environment.
 
 ~~~go
 environment, err := ui.NewUIEnvironment()
@@ -1133,6 +1154,8 @@ On appearance notification, update the DWM title-bar attribute for every open to
 
 Explicit Quit stops config watching and tunnel activity as before. Close log refresh contexts before log widgets. Dispose tray before main window, owned windows before UIEnvironment, and UIEnvironment before walk application teardown.
 
+Delete text_scale.go after confirming no ApplyStandardTextScale caller remains.
+
 - [ ] **Step 6: Run integration verification**
 
 Run:
@@ -1147,7 +1170,7 @@ Expected: both commands succeed.
 - [ ] **Step 7: Commit**
 
 ~~~powershell
-git add Windows/cmd/tunneldock/main.go Windows/internal/ui/main_window.go Windows/internal/ui/tray.go Windows/internal/ui/environment.go Windows/internal/ui/ui_smoke_windows_test.go
+git add Windows/cmd/tunneldock/main.go Windows/internal/ui/main_window.go Windows/internal/ui/tray.go Windows/internal/ui/environment.go Windows/internal/ui/ui_smoke_windows_test.go Windows/internal/ui/text_scale.go
 git commit -m "feat(windows): integrate adaptive UI lifecycle"
 ~~~
 
