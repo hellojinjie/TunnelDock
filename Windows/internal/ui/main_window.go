@@ -246,10 +246,14 @@ func (w *Window) onSearchChanged() {
 
 func (w *Window) onCurrentHostSelected() {
 	index := w.currentHostList.CurrentIndex()
-	if index < 0 || index >= len(w.currentHosts) {
+	if index < 0 || index >= len(w.hostRows) {
 		return
 	}
-	w.selectHost(&w.currentHosts[index])
+	host, found := HostForAlias(w.currentHosts, w.hostRows[index].Alias)
+	if !found {
+		return
+	}
+	w.selectHost(&host)
 }
 
 func (w *Window) onAllTunnels() {
@@ -442,10 +446,13 @@ func (w *Window) refreshTunnels() error {
 
 func (w *Window) onRecentTunnelSelected() {
 	index := w.recentTunnelList.CurrentIndex()
-	if index < 0 || index >= len(w.visibleTunnels) {
+	if index < 0 || index >= len(w.tunnelRows) {
 		return
 	}
-	runtime := w.visibleTunnels[index]
+	runtime, found := TunnelForRuntimeID(w.visibleTunnels, w.tunnelRows[index].RuntimeID)
+	if !found {
+		return
+	}
 	w.selectedTunnelID, w.selectedTemporary = runtime.ID, runtime.Temporary
 	if runtime.State == model.StateDisconnected {
 		_ = w.tunnelActionButton.SetText("Connect")

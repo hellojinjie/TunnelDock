@@ -22,6 +22,17 @@ func TestHostTableRowsShowConnectionAndAvailability(t *testing.T) {
 	}
 }
 
+func TestHostForAliasDoesNotDependOnTableRowOrder(t *testing.T) {
+	hosts := []model.SSHHost{
+		{Alias: "zebra", Hostname: "zebra.example"},
+		{Alias: "alpha", Hostname: "alpha.example"},
+	}
+	host, found := HostForAlias(hosts, "alpha")
+	if !found || host.Hostname != "alpha.example" {
+		t.Fatalf("HostForAlias() = %#v, %v", host, found)
+	}
+}
+
 func TestMissingHostTableRowsOnlyShowsSavedAliasesAbsentFromConfig(t *testing.T) {
 	rows := MissingHostTableRows(
 		[]model.SSHHost{{Alias: "gpu"}},

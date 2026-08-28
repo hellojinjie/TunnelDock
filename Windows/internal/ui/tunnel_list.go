@@ -55,6 +55,16 @@ func TunnelTableRows(runtimes []model.TunnelRuntime) []*TunnelTableRow {
 	return rows
 }
 
+// TunnelForRuntimeID resolves a sorted table row to its runtime snapshot.
+func TunnelForRuntimeID(runtimes []model.TunnelRuntime, runtimeID string) (model.TunnelRuntime, bool) {
+	for _, runtime := range runtimes {
+		if runtime.ID == runtimeID {
+			return runtime, true
+		}
+	}
+	return model.TunnelRuntime{}, false
+}
+
 func savedSnapshots(manager *tunnel.Manager) []model.TunnelRuntime {
 	if manager == nil {
 		return nil

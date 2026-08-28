@@ -21,6 +21,17 @@ func HostTableRows(hosts []model.SSHHost) []*HostTableRow {
 	return rows
 }
 
+// HostForAlias resolves a table row back to its source host. TableView may
+// sort its display rows, so a displayed row index is not a stable model index.
+func HostForAlias(hosts []model.SSHHost, alias string) (model.SSHHost, bool) {
+	for _, host := range hosts {
+		if host.Alias == alias {
+			return host, true
+		}
+	}
+	return model.SSHHost{}, false
+}
+
 // MissingHostTableRows mirrors the macOS sidebar: only saved tunnel aliases
 // that are absent from the current SSH config are shown, and search applies to
 // the alias without changing the order of the saved definitions.

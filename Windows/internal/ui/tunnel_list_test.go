@@ -37,4 +37,15 @@ func TestTunnelTableRowsShowForwardAndState(t *testing.T) {
 	}
 }
 
+func TestTunnelForRuntimeIDDoesNotDependOnTableRowOrder(t *testing.T) {
+	runtimes := []model.TunnelRuntime{
+		{ID: "zebra", Definition: model.TunnelDefinition{HostAlias: "gpu"}},
+		{ID: "alpha", Definition: model.TunnelDefinition{HostAlias: "gpu"}},
+	}
+	runtime, found := TunnelForRuntimeID(runtimes, "alpha")
+	if !found || runtime.ID != "alpha" {
+		t.Fatalf("TunnelForRuntimeID() = %#v, %v", runtime, found)
+	}
+}
+
 func stringPtr(value string) *string { return &value }
