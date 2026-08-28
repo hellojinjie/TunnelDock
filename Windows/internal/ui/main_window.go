@@ -27,6 +27,7 @@ type Window struct {
 	currentHostList     *walk.TableView
 	missingHostLabel    *walk.Label
 	missingHostList     *walk.TableView
+	hostsTitle          *walk.Label
 	addHostButton       *walk.ToolButton
 	editConfigButton    *walk.ToolButton
 	refreshConfigButton *walk.ToolButton
@@ -41,6 +42,7 @@ type Window struct {
 	protocol            *walk.ComboBox
 	advanced            *walk.Composite
 	quickSection        *walk.Composite
+	quickTitle          *walk.Label
 	connectButton       *walk.PushButton
 	validation          *walk.Label
 	recentTunnelList    *walk.TableView
@@ -77,7 +79,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 		AssignTo: &window.MainWindow,
 		Title:    "TunnelDock",
 		MinSize:  Size{Width: 900, Height: 600},
-		Size:     Size{Width: 1120, Height: 720},
+		Size:     Size{Width: 1120, Height: 760},
 		Layout:   VBox{MarginsZero: true},
 		Children: []Widget{
 			HSplitter{
@@ -89,7 +91,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 						Layout:  VBox{Margins: Margins{Left: 12, Top: 12, Right: 12, Bottom: 12}, Spacing: 8},
 						Children: []Widget{
 							PushButton{AssignTo: &window.allTunnelsButton, Text: "▦  All Tunnels", OnClicked: window.onAllTunnels},
-							Label{Text: "SSH Hosts"},
+							Label{AssignTo: &window.hostsTitle, Text: "SSH Hosts"},
 							LineEdit{
 								AssignTo:      &window.searchBox,
 								CueBanner:     "Search SSH hosts",
@@ -137,7 +139,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 							}},
 							Label{AssignTo: &window.detailConnection, Text: "Choose a host from the sidebar."},
 							Label{AssignTo: &window.detailStatus},
-							Label{AssignTo: &window.tunnelsTitle, Text: "All Tunnels", Font: Font{Bold: true}},
+							Label{AssignTo: &window.tunnelsTitle, Text: "All Tunnels"},
 							Label{AssignTo: &window.noTunnelsLabel, Text: "No tunnels for this host yet."},
 							TableView{
 								AssignTo:            &window.recentTunnelList,
@@ -158,7 +160,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 								PushButton{AssignTo: &window.moreButton, Text: "More…", OnClicked: window.onMore},
 							}},
 							Composite{AssignTo: &window.quickSection, Layout: VBox{Spacing: 10}, Children: []Widget{
-								Label{Text: "Quick Forward"},
+								Label{AssignTo: &window.quickTitle, Text: "Quick Forward"},
 								Composite{Layout: HBox{Spacing: 8}, Children: []Widget{
 									LineEdit{AssignTo: &window.remotePort, CueBanner: "Remote Port", StretchFactor: 1, OnTextChanged: window.onRemotePortChanged},
 									PushButton{AssignTo: &window.connectButton, Text: "Connect", OnClicked: window.onConnect},
@@ -193,6 +195,14 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 		return nil, err
 	}
 	window.detailTitle.SetFont(headingFont)
+	sectionFont, err := walk.NewFont("MS Shell Dlg 2", standardTextPointSize, walk.FontBold)
+	if err != nil {
+		window.Dispose()
+		return nil, err
+	}
+	window.hostsTitle.SetFont(sectionFont)
+	window.tunnelsTitle.SetFont(sectionFont)
+	window.quickTitle.SetFont(sectionFont)
 
 	if err := window.refreshHosts(); err != nil {
 		window.Dispose()
