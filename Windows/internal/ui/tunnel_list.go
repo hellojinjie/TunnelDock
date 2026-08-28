@@ -1,24 +1,9 @@
 package ui
 
 import (
-	"fmt"
-
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
 	"github.com/hellojinjie/TunnelDock/Windows/internal/tunnel"
 )
-
-type TunnelRows struct {
-	Saved     []string
-	Temporary []string
-}
-
-type TunnelTableRow struct {
-	RuntimeID string
-	Host      string
-	Name      string
-	Forward   string
-	Status    string
-}
 
 // TunnelsForHost returns the manager's stable order restricted to the current
 // host pane, matching the focused, host-first interaction used by the app.
@@ -35,29 +20,7 @@ func TunnelsForHost(runtimes []model.TunnelRuntime, alias string) []model.Tunnel
 	return filtered
 }
 
-func TunnelRowTexts(runtimes []model.TunnelRuntime) []string {
-	rows := make([]string, 0, len(runtimes))
-	for _, runtime := range runtimes {
-		rows = append(rows, fmt.Sprintf("%s — %s", runtime.DisplayName(), tunnelStateText(runtime.State)))
-	}
-	return rows
-}
-
-func TunnelTableRows(runtimes []model.TunnelRuntime) []*TunnelTableRow {
-	rows := make([]*TunnelTableRow, 0, len(runtimes))
-	for _, runtime := range runtimes {
-		rows = append(rows, &TunnelTableRow{
-			RuntimeID: runtime.ID,
-			Host:      runtime.Definition.HostAlias,
-			Name:      runtime.DisplayName(),
-			Forward:   fmt.Sprintf("%s:%d → %s:%d", runtime.Definition.LocalAddress, runtime.Definition.LocalPort, runtime.Definition.RemoteHost, runtime.Definition.RemotePort),
-			Status:    tunnelStateText(runtime.State),
-		})
-	}
-	return rows
-}
-
-// TunnelForRuntimeID resolves a sorted table row to its runtime snapshot.
+// TunnelForRuntimeID resolves a stable custom-row identity to its snapshot.
 func TunnelForRuntimeID(runtimes []model.TunnelRuntime, runtimeID string) (model.TunnelRuntime, bool) {
 	for _, runtime := range runtimes {
 		if runtime.ID == runtimeID {
@@ -91,19 +54,6 @@ func temporarySnapshots(manager *tunnel.Manager) []model.TunnelRuntime {
 		}
 	}
 	return snapshots
-}
-
-func TunnelListRows(runtimes []model.TunnelRuntime) TunnelRows {
-	rows := TunnelRows{}
-	for _, runtime := range runtimes {
-		row := fmt.Sprintf("%s — %s", runtime.DisplayName(), tunnelStateText(runtime.State))
-		if runtime.Temporary {
-			rows.Temporary = append(rows.Temporary, row)
-		} else {
-			rows.Saved = append(rows.Saved, row)
-		}
-	}
-	return rows
 }
 
 func tunnelStateText(state model.TunnelState) string {

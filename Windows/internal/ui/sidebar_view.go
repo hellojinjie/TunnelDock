@@ -116,24 +116,17 @@ func NewSidebarView(parent walk.Container, env *UIEnvironment, callbacks Sidebar
 	toolbarLayout.SetSpacing(4)
 	_ = toolbar.SetLayout(toolbarLayout)
 	for _, action := range []struct {
-		text string
+		icon IconKind
 		tip  string
 		fn   func()
 	}{
-		{"Add", "Add SSH Host", callbacks.AddHost},
-		{"Edit", "Open SSH config", callbacks.EditConfig},
-		{"Refresh", "Refresh SSH config", callbacks.Refresh},
+		{IconPlus, "Add SSH Host", callbacks.AddHost},
+		{IconEdit, "Open SSH config", callbacks.EditConfig},
+		{IconRefresh, "Refresh SSH config", callbacks.Refresh},
 	} {
-		button, buttonErr := walk.NewToolButton(toolbar)
+		_, buttonErr := NewIconButton(toolbar, env, action.icon, action.tip, action.fn)
 		if buttonErr != nil {
 			return fail(buttonErr)
-		}
-		_ = button.SetText(action.text)
-		button.SetToolTipText(action.tip)
-		if action.fn != nil {
-			button.Clicked().Attach(action.fn)
-		} else {
-			button.SetEnabled(false)
 		}
 	}
 	view.scroll, err = walk.NewScrollView(root)

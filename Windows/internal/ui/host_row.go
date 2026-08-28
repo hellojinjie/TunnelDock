@@ -121,7 +121,9 @@ func (w *HostRowWidget) paint(canvas *walk.Canvas, updateBounds walk.Rectangle) 
 	}
 	icon := IconServer
 	iconColor := resources.Palette.SecondaryText
-	if w.presentation.Missing || w.presentation.Availability != model.HostAvailable {
+	if w.presentation.ID == allTunnelsPaneID {
+		icon = IconAllTunnels
+	} else if w.presentation.Missing || w.presentation.Availability != model.HostAvailable {
 		icon = IconWarning
 		iconColor = resources.Palette.Warning
 	}

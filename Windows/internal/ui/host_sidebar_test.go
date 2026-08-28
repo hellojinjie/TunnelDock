@@ -6,18 +6,18 @@ import (
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
 )
 
-func TestHostTableRowsShowConnectionAndAvailability(t *testing.T) {
-	rows := HostTableRows([]model.SSHHost{
+func TestPresentHostRowsShowsIdentityAndAvailability(t *testing.T) {
+	rows := PresentHostRows([]model.SSHHost{
 		{Alias: "gpu", User: "alice", Hostname: "gpu.example", Port: 22, Availability: model.HostAvailable},
 		{Alias: "broken", Hostname: "broken", Port: 22, Availability: model.HostConfigurationError},
-	})
+	}, map[string]bool{"gpu": true})
 	if len(rows) != 2 {
-		t.Fatalf("len(HostTableRows()) = %d", len(rows))
+		t.Fatalf("len(PresentHostRows()) = %d", len(rows))
 	}
-	if rows[0].Alias != "gpu" || rows[0].Connection != "alice@gpu.example:22" || rows[0].Status != "Ready" {
+	if rows[0].ID != "gpu" || rows[0].Title != "gpu" || !rows[0].Active || rows[0].Availability != model.HostAvailable {
 		t.Fatalf("ready row = %#v", rows[0])
 	}
-	if rows[1].Status != "Configuration error" {
+	if rows[1].Availability != model.HostConfigurationError {
 		t.Fatalf("error row = %#v", rows[1])
 	}
 }
@@ -33,8 +33,8 @@ func TestHostForAliasDoesNotDependOnTableRowOrder(t *testing.T) {
 	}
 }
 
-func TestMissingHostTableRowsOnlyShowsSavedAliasesAbsentFromConfig(t *testing.T) {
-	rows := MissingHostTableRows(
+func TestPresentMissingHostRowsOnlyShowsSavedAliasesAbsentFromConfig(t *testing.T) {
+	rows := PresentMissingHostRows(
 		[]model.SSHHost{{Alias: "gpu"}},
 		[]model.TunnelRuntime{
 			{Definition: model.TunnelDefinition{HostAlias: "gpu"}},
@@ -44,7 +44,7 @@ func TestMissingHostTableRowsOnlyShowsSavedAliasesAbsentFromConfig(t *testing.T)
 		},
 		"old",
 	)
-	if len(rows) != 1 || rows[0].Alias != "old" || rows[0].Status != "Unavailable" {
-		t.Fatalf("MissingHostTableRows() = %#v", rows)
+	if len(rows) != 1 || rows[0].ID != "old" || !rows[0].Missing {
+		t.Fatalf("PresentMissingHostRows() = %#v", rows)
 	}
 }

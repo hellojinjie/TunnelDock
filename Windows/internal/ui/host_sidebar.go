@@ -1,28 +1,8 @@
 package ui
 
-import (
-	"strings"
+import "github.com/hellojinjie/TunnelDock/Windows/internal/model"
 
-	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
-)
-
-type HostTableRow struct {
-	Alias      string
-	Connection string
-	Status     string
-}
-
-func HostTableRows(hosts []model.SSHHost) []*HostTableRow {
-	rows := make([]*HostTableRow, 0, len(hosts))
-	for _, host := range hosts {
-		detail := HostDetailFor(&host)
-		rows = append(rows, &HostTableRow{Alias: host.Alias, Connection: detail.Connection, Status: hostAvailabilityText(host.Availability)})
-	}
-	return rows
-}
-
-// HostForAlias resolves a table row back to its source host. TableView may
-// sort its display rows, so a displayed row index is not a stable model index.
+// HostForAlias resolves a stable sidebar identity back to its source host.
 func HostForAlias(hosts []model.SSHHost, alias string) (model.SSHHost, bool) {
 	for _, host := range hosts {
 		if host.Alias == alias {
@@ -30,34 +10,6 @@ func HostForAlias(hosts []model.SSHHost, alias string) (model.SSHHost, bool) {
 		}
 	}
 	return model.SSHHost{}, false
-}
-
-// MissingHostTableRows mirrors the macOS sidebar: only saved tunnel aliases
-// that are absent from the current SSH config are shown, and search applies to
-// the alias without changing the order of the saved definitions.
-func MissingHostTableRows(hosts []model.SSHHost, runtimes []model.TunnelRuntime, query string) []*HostTableRow {
-	known := make(map[string]struct{}, len(hosts))
-	for _, host := range hosts {
-		known[host.Alias] = struct{}{}
-	}
-	seen := make(map[string]struct{})
-	query = strings.ToLower(query)
-	rows := make([]*HostTableRow, 0)
-	for _, runtime := range runtimes {
-		if runtime.Temporary || runtime.Definition.HostAlias == "" {
-			continue
-		}
-		alias := runtime.Definition.HostAlias
-		if _, exists := known[alias]; exists {
-			continue
-		}
-		if _, exists := seen[alias]; exists || (query != "" && !strings.Contains(strings.ToLower(alias), query)) {
-			continue
-		}
-		seen[alias] = struct{}{}
-		rows = append(rows, &HostTableRow{Alias: alias, Connection: "SSH host not found", Status: "Unavailable"})
-	}
-	return rows
 }
 
 func hostAvailabilityText(availability model.HostAvailability) string {

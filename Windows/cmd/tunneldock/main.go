@@ -35,6 +35,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	environment, err := ui.NewUIEnvironment()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer environment.Dispose()
 
 	runtime, err := initializeRuntime()
 	if err != nil {
@@ -43,7 +48,7 @@ func main() {
 	defer runtime.job.Close()
 	defer runtime.manager.Shutdown()
 
-	mainWindow, err := ui.NewMainWindowWithConnector(runtime.model, runtime.manager)
+	mainWindow, err := ui.NewMainWindowWithEnvironment(runtime.model, runtime.manager, environment)
 	if err != nil {
 		log.Fatal(err)
 	}
