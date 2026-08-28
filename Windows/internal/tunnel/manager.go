@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -253,10 +254,11 @@ func (m *Manager) launch(id string, generation uint64, initial bool) error {
 		err = m.processes.WaitUntilReady(ctx, process, definition.LocalAddress, definition.LocalPort, 5*time.Second)
 	}
 	if err != nil {
+		stderr := startupStderr(process)
 		if process != nil {
 			_ = process.Terminate()
 		}
-		return m.launchFailed(id, generation, initial, err)
+		return m.launchFailed(id, generation, initial, sshclient.NewConnectionFailure(stderr, err))
 	}
 
 	now := m.now()
@@ -281,6 +283,29 @@ func (m *Manager) launch(id string, generation uint64, initial bool) error {
 	}
 	go m.monitor(id, generation, process)
 	return nil
+}
+
+// startupStderr drains output emitted before the process reaches the normal
+// monitor. In particular, ssh.exe may exit during readiness checks; retaining
+// these lines turns "process exited" into the actual OpenSSH explanation.
+func startupStderr(process ManagedProcess) string {
+	if process == nil {
+		return ""
+	}
+	var lines []string
+	for {
+		select {
+		case event, open := <-process.Events():
+			if !open {
+				return strings.Join(lines, "\n")
+			}
+			if event.Kind == sshclient.ProcessEventStderr && strings.TrimSpace(event.Data) != "" {
+				lines = append(lines, event.Data)
+			}
+		default:
+			return strings.Join(lines, "\n")
+		}
+	}
 }
 
 func (m *Manager) launchFailed(id string, generation uint64, initial bool, launchErr error) error {

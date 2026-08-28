@@ -409,7 +409,7 @@ func (w *Window) onConnect() {
 				_ = w.localPort.SetFocus()
 			}
 			if err != nil {
-				_ = w.validation.SetText(err.Error())
+				w.showConnectionError(err)
 			} else {
 				_ = w.validation.SetText("Temporary tunnel is connecting.")
 				_ = w.refreshTunnels()
@@ -495,12 +495,18 @@ func (w *Window) onTunnelAction() {
 		err := w.manager.ConnectSaved(context.Background(), id)
 		walk.App().Synchronize(func() {
 			if err != nil {
-				_ = w.validation.SetText(err.Error())
+				w.showConnectionError(err)
 			} else {
 				_ = w.refreshTunnels()
 			}
 		})
 	}()
+}
+
+func (w *Window) showConnectionError(err error) {
+	presentation := PresentConnectionError(err)
+	_ = w.validation.SetText(presentation.Summary)
+	ShowConnectionError(w, err)
 }
 
 func (w *Window) onSaveTemporary() {

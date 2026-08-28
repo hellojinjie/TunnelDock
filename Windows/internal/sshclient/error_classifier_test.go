@@ -37,3 +37,29 @@ func TestClassifyOpenSSHError(t *testing.T) {
 		})
 	}
 }
+
+func TestConnectionFailurePreservesDetailsAndSuggestedAction(t *testing.T) {
+	failure := NewConnectionFailure("Permission denied (publickey).", ErrProcessExited)
+	if failure.Error() != "Authentication failed." {
+		t.Fatalf("Error() = %q", failure.Error())
+	}
+	if failure.Details() != "Permission denied (publickey)." {
+		t.Fatalf("Details() = %q", failure.Details())
+	}
+	if failure.SuggestedAction() == "" {
+		t.Fatal("SuggestedAction() is empty")
+	}
+	if !errors.Is(failure, ErrProcessExited) {
+		t.Fatal("ConnectionFailure does not unwrap its startup cause")
+	}
+}
+
+func TestConnectionFailureMakesStartupTimeoutSpecific(t *testing.T) {
+	failure := NewConnectionFailure("", ErrReadinessTimedOut)
+	if failure.Error() != "The SSH tunnel did not start listening within 5 seconds." {
+		t.Fatalf("Error() = %q", failure.Error())
+	}
+	if failure.Details() != ErrReadinessTimedOut.Error() {
+		t.Fatalf("Details() = %q", failure.Details())
+	}
+}

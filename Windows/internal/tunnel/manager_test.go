@@ -26,6 +26,19 @@ func TestManagerInitialFailureDoesNotReconnect(t *testing.T) {
 	}
 }
 
+func TestManagerInitialFailureReturnsOpenSSHDetails(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 8888)}, []error{sshclient.ErrProcessExited})
+	fixture.controller.nextStderr = "Permission denied (publickey)."
+	err := fixture.manager.ConnectSaved(context.Background(), "saved-1")
+	var failure *sshclient.ConnectionFailure
+	if !errors.As(err, &failure) {
+		t.Fatalf("ConnectSaved() error = %T %v, want ConnectionFailure", err, err)
+	}
+	if failure.Details() != "Permission denied (publickey)." || failure.Error() != "Authentication failed." {
+		t.Fatalf("failure = %#v", failure)
+	}
+}
+
 func TestManagerEstablishedExitReconnectsWithBackoffAndResets(t *testing.T) {
 	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 8888)}, []error{
 		nil,
@@ -385,15 +398,20 @@ func (p *fakeManagerPorts) reservationCount() int {
 }
 
 type fakeManagerController struct {
-	mu        sync.Mutex
-	readiness []error
-	processes []*fakeManagerProcess
+	mu         sync.Mutex
+	readiness  []error
+	processes  []*fakeManagerProcess
+	nextStderr string
 }
 
 func (c *fakeManagerController) Start(context.Context, string, model.TunnelDefinition) (ManagedProcess, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	process := newFakeManagerProcess()
+	if c.nextStderr != "" {
+		process.stderr(c.nextStderr)
+		c.nextStderr = ""
+	}
 	c.processes = append(c.processes, process)
 	return process, nil
 }

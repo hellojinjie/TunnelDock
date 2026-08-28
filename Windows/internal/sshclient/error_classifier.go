@@ -26,6 +26,68 @@ type ClassifiedError struct {
 	RawStderr string
 }
 
+// ConnectionFailure retains the actionable classification, raw ssh.exe output,
+// and startup cause so the UI can explain a failed tunnel without losing the
+// information needed to diagnose it.
+type ConnectionFailure struct {
+	ClassifiedError
+	Cause error
+}
+
+func NewConnectionFailure(stderr string, cause error) *ConnectionFailure {
+	classified := ClassifyOpenSSHError(stderr, cause)
+	if errors.Is(cause, ErrReadinessTimedOut) {
+		classified.Kind = ErrorUnexpectedExit
+		classified.Message = "The SSH tunnel did not start listening within 5 seconds."
+	}
+	if errors.Is(cause, ErrProcessExited) && strings.TrimSpace(stderr) == "" {
+		classified.Kind = ErrorUnexpectedExit
+		classified.Message = "ssh.exe exited before the local tunnel was ready."
+	}
+	return &ConnectionFailure{ClassifiedError: classified, Cause: cause}
+}
+
+func (failure *ConnectionFailure) Error() string { return failure.Message }
+
+func (failure *ConnectionFailure) Unwrap() error { return failure.Cause }
+
+// SuggestedAction provides the next useful user action for every classified
+// OpenSSH failure rather than leaving a generic error string in the UI.
+func (failure *ConnectionFailure) SuggestedAction() string {
+	switch failure.Kind {
+	case ErrorLocalPortInUse:
+		return "Choose a different Local Port under Advanced, then try again."
+	case ErrorAuthenticationFailed:
+		return "Verify the SSH user and key, then test `ssh <Host>` in a terminal."
+	case ErrorHostVerificationRequired:
+		return "Connect to this Host once in a terminal and verify its host key before retrying."
+	case ErrorHostNotFound:
+		return "Refresh SSH Hosts or open your SSH config and check the Host alias."
+	case ErrorSSHConfiguration:
+		return "Open your SSH config and correct the reported configuration problem."
+	case ErrorConnectionTimedOut:
+		return "Check the network connection, host address, and SSH port."
+	case ErrorCouldNotResolveHost:
+		return "Check the HostName in your SSH config and DNS or network access."
+	case ErrorSSHServerRefused:
+		return "Check that the SSH service is running and accepting connections on the configured port."
+	case ErrorOpenSSHNotInstalled:
+		return "Install Windows OpenSSH Client in Optional features, then restart TunnelDock."
+	default:
+		return "Review the technical details below, then test `ssh <Host>` in a terminal."
+	}
+}
+
+func (failure *ConnectionFailure) Details() string {
+	if stderr := strings.TrimSpace(failure.RawStderr); stderr != "" {
+		return stderr
+	}
+	if failure.Cause != nil {
+		return failure.Cause.Error()
+	}
+	return "No additional output was received from ssh.exe."
+}
+
 func ClassifyOpenSSHError(stderr string, launchErr error) ClassifiedError {
 	classified := ClassifiedError{RawStderr: stderr}
 	if errors.Is(launchErr, ErrOpenSSHNotInstalled) {
