@@ -9,11 +9,11 @@ import (
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
 )
 
-// TemporaryTunnelConnector is implemented by tunnel.Manager. Keeping this
-// narrow interface lets the Walk layer request a connection without owning the
-// lifecycle state machine.
-type TemporaryTunnelConnector interface {
-	ConnectTemporary(context.Context, model.TunnelDefinition) (string, error)
+// RecentTunnelConnector is implemented by tunnel.Manager. Keeping this narrow
+// interface lets the Walk layer create a persisted connection history without
+// owning the lifecycle state machine.
+type RecentTunnelConnector interface {
+	ConnectRecent(context.Context, model.TunnelDefinition) (string, error)
 }
 
 type FocusTarget int
@@ -89,14 +89,14 @@ func (q *QuickForward) TunnelDefinition(hostAlias string) (model.TunnelDefinitio
 	return definition, nil
 }
 
-// Connect validates the form before delegating creation of the runtime-only
+// Connect validates the form before delegating creation of a persisted recent
 // tunnel to TunnelManager.
-func (q *QuickForward) Connect(ctx context.Context, connector TemporaryTunnelConnector, hostAlias string) (string, error) {
+func (q *QuickForward) Connect(ctx context.Context, connector RecentTunnelConnector, hostAlias string) (string, error) {
 	definition, err := q.TunnelDefinition(hostAlias)
 	if err != nil {
 		return "", err
 	}
-	return connector.ConnectTemporary(ctx, definition)
+	return connector.ConnectRecent(ctx, definition)
 }
 
 func (q *QuickForward) Reset() {

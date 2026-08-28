@@ -189,6 +189,20 @@ func (m *Manager) ConnectTemporary(ctx context.Context, definition model.TunnelD
 	return definition.ID, nil
 }
 
+// ConnectRecent creates a Quick Forward tunnel and persists it immediately
+// after its first successful connection. A recent tunnel remains available for
+// later reconnects even after it is disconnected or TunnelDock restarts.
+func (m *Manager) ConnectRecent(ctx context.Context, definition model.TunnelDefinition) (string, error) {
+	id, err := m.ConnectTemporary(ctx, definition)
+	if err != nil {
+		return "", err
+	}
+	if _, err := m.SaveTemporary(id); err != nil {
+		return id, err
+	}
+	return id, nil
+}
+
 func (m *Manager) connectInitial(_ context.Context, id string) error {
 	m.mu.Lock()
 	runtime, exists := m.runtimes[id]

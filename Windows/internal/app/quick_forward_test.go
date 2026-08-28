@@ -9,12 +9,12 @@ import (
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
 )
 
-type recordingTemporaryConnector struct {
+type recordingRecentConnector struct {
 	definition model.TunnelDefinition
 	err        error
 }
 
-func (c *recordingTemporaryConnector) ConnectTemporary(_ context.Context, definition model.TunnelDefinition) (string, error) {
+func (c *recordingRecentConnector) ConnectRecent(_ context.Context, definition model.TunnelDefinition) (string, error) {
 	c.definition = definition
 	if c.err != nil {
 		return "", c.err
@@ -66,10 +66,10 @@ func TestQuickForwardTunnelDefinitionRejectsNonNumericRemotePort(t *testing.T) {
 	}
 }
 
-func TestQuickForwardConnectPassesTemporaryDefinitionToConnector(t *testing.T) {
+func TestQuickForwardConnectPassesRecentDefinitionToConnector(t *testing.T) {
 	quick := NewQuickForward()
 	quick.SetRemotePort("8888")
-	connector := &recordingTemporaryConnector{}
+	connector := &recordingRecentConnector{}
 
 	id, err := quick.Connect(context.Background(), connector, "gpu-build")
 	if err != nil {
@@ -83,7 +83,7 @@ func TestQuickForwardConnectPassesTemporaryDefinitionToConnector(t *testing.T) {
 func TestQuickForwardConnectDoesNotCallConnectorForInvalidForm(t *testing.T) {
 	quick := NewQuickForward()
 	quick.SetRemotePort("invalid")
-	connector := &recordingTemporaryConnector{err: errors.New("connector must not run")}
+	connector := &recordingRecentConnector{err: errors.New("connector must not run")}
 
 	_, err := quick.Connect(context.Background(), connector, "gpu-build")
 	if err == nil || connector.definition.HostAlias != "" {

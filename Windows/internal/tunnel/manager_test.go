@@ -169,6 +169,27 @@ func TestManagerTemporarySaveAndDisconnectBehavior(t *testing.T) {
 	}
 }
 
+func TestManagerConnectRecentPersistsSuccessfulQuickForward(t *testing.T) {
+	fixture := newManagerFixture(t, nil, []error{nil})
+	id, err := fixture.manager.ConnectRecent(context.Background(), managerDefinition("", "gpu", 9002))
+	if err != nil {
+		t.Fatalf("ConnectRecent() error = %v", err)
+	}
+	snapshot, exists := fixture.manager.Snapshot(id)
+	if !exists || snapshot.Temporary || snapshot.State != model.StateConnected {
+		t.Fatalf("recent snapshot = %#v, %v", snapshot, exists)
+	}
+	if len(fixture.repository.snapshot()) != 1 {
+		t.Fatalf("saved recent tunnels = %#v", fixture.repository.snapshot())
+	}
+	if err := fixture.manager.Disconnect(id); err != nil {
+		t.Fatalf("Disconnect() error = %v", err)
+	}
+	if _, exists := fixture.manager.Snapshot(id); !exists {
+		t.Fatal("disconnected recent tunnel disappeared")
+	}
+}
+
 func TestManagerSnapshotsListsSavedBeforeTemporary(t *testing.T) {
 	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
 	temporaryID, err := fixture.manager.ConnectTemporary(context.Background(), managerDefinition("", "gpu", 9001))

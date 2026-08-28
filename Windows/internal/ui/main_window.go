@@ -411,7 +411,7 @@ func (w *Window) onConnect() {
 			if err != nil {
 				w.showConnectionError(err, alias)
 			} else {
-				_ = w.validation.SetText("Temporary tunnel is connecting.")
+				_ = w.validation.SetText("Tunnel connected and added to Recent Tunnels.")
 				_ = w.refreshTunnels()
 			}
 		})
