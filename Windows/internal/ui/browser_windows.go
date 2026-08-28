@@ -6,6 +6,8 @@ var shellOpenURL = shellOpen
 
 func OpenBrowser(url string) error { return shellOpenURL(url) }
 
+func OpenConfigFile(path string) error { return shellOpenURL(path) }
+
 func shellOpen(url string) error {
 	file, err := windows.UTF16PtrFromString(url)
 	if err != nil {

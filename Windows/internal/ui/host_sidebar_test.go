@@ -21,3 +21,19 @@ func TestHostTableRowsShowConnectionAndAvailability(t *testing.T) {
 		t.Fatalf("error row = %#v", rows[1])
 	}
 }
+
+func TestMissingHostTableRowsOnlyShowsSavedAliasesAbsentFromConfig(t *testing.T) {
+	rows := MissingHostTableRows(
+		[]model.SSHHost{{Alias: "gpu"}},
+		[]model.TunnelRuntime{
+			{Definition: model.TunnelDefinition{HostAlias: "gpu"}},
+			{Definition: model.TunnelDefinition{HostAlias: "old"}},
+			{Definition: model.TunnelDefinition{HostAlias: "gone"}},
+			{Temporary: true, Definition: model.TunnelDefinition{HostAlias: "temporary"}},
+		},
+		"old",
+	)
+	if len(rows) != 1 || rows[0].Alias != "old" || rows[0].Status != "Unavailable" {
+		t.Fatalf("MissingHostTableRows() = %#v", rows)
+	}
+}

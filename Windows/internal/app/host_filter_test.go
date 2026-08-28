@@ -42,3 +42,16 @@ func TestAppModelFiltersHostsUsingCurrentQuery(t *testing.T) {
 		t.Fatalf("FilteredHosts() = %#v", got)
 	}
 }
+
+func TestAppModelExposesUnfilteredHostsAndQueryForSecondaryViews(t *testing.T) {
+	application := NewModel()
+	hosts := []model.SSHHost{{Alias: "gpu"}, {Alias: "nas"}}
+	application.SetHosts(hosts)
+	application.SetSearchQuery("gpu")
+	if got := application.Hosts(); len(got) != 2 {
+		t.Fatalf("Hosts() length = %d, want 2", len(got))
+	}
+	if application.SearchQuery() != "gpu" {
+		t.Fatalf("SearchQuery() = %q", application.SearchQuery())
+	}
+}

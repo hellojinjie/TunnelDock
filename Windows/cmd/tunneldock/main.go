@@ -72,6 +72,19 @@ func main() {
 	}
 	defer tray.Dispose()
 	mainWindow.SetSettingsAction(tray.ShowSettings)
+	mainWindow.SetSidebarActions(
+		func() {
+			ui.ShowAddHostDialog(mainWindow, func(input ui.SSHHostInput) error {
+				if err := runtime.AddSSHHost(input); err != nil {
+					return err
+				}
+				refresh()
+				return nil
+			})
+		},
+		func() { _ = ui.OpenConfigFile(runtime.configPath) },
+		refresh,
+	)
 	mainWindow.Closing().Attach(func(cancel *bool, _ walk.CloseReason) {
 		if !quitting {
 			tray.MinimizeOnClose(cancel)
@@ -171,6 +184,27 @@ func (r *runtime) ReloadHosts(ctx context.Context) error {
 	r.mu.Lock()
 	r.expanded = expanded
 	r.mu.Unlock()
+	return nil
+}
+
+func (r *runtime) AddSSHHost(input ui.SSHHostInput) error {
+	if err := input.Validate(); err != nil {
+		return err
+	}
+	for _, host := range r.model.Hosts() {
+		if host.Alias == input.Alias {
+			return fmt.Errorf("SSH Host %q already exists", input.Alias)
+		}
+	}
+	file, err := os.OpenFile(r.configPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open SSH configuration: %w", err)
+	}
+	defer file.Close()
+	block := "\n\n" + input.ConfigBlock()
+	if _, err := file.WriteString(block); err != nil {
+		return fmt.Errorf("write SSH configuration: %w", err)
+	}
 	return nil
 }
 
