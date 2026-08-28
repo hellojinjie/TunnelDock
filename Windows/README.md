@@ -33,12 +33,9 @@ machine before relying on race detection.
 
 ## Build
 
-```powershell
-cd Windows
-go build ./cmd/tunneldock
-```
-
-Or create the portable executable (including tests and vet):
+For a desktop executable, always use the release build script. It sets the
+Windows GUI subsystem so launching the application does not create a console
+window:
 
 ```powershell
 cd Windows
