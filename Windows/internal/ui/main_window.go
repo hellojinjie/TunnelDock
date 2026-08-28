@@ -186,6 +186,15 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 	if err != nil {
 		return nil, err
 	}
+	applicationIcon, err := walk.NewIconFromResource("APP")
+	if err != nil {
+		window.Dispose()
+		return nil, err
+	}
+	if err := window.SetIcon(applicationIcon); err != nil {
+		window.Dispose()
+		return nil, err
+	}
 	if err := ApplyStandardTextScale(window); err != nil {
 		window.Dispose()
 		return nil, err
