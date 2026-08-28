@@ -147,6 +147,7 @@ func NewMainWindowWithConnector(model *app.Model, manager *tunnel.Manager) (*Win
 								LastColumnStretched: true,
 								MinSize:             Size{Width: 0, Height: 150},
 								Columns: []TableViewColumn{
+									{DataMember: "Host", Width: 130},
 									{DataMember: "Name", Width: 120},
 									{DataMember: "Forward", Width: 260},
 									{DataMember: "Status", Width: 100},
@@ -445,6 +446,11 @@ func (w *Window) refreshTunnels() error {
 	w.tunnelActionButton.SetEnabled(false)
 	w.browserButton.SetEnabled(false)
 	w.moreButton.SetEnabled(false)
+	if w.recentTunnelList.Columns().Len() > 0 {
+		if err := w.recentTunnelList.Columns().At(0).SetVisible(w.allTunnelsSelected); err != nil {
+			return err
+		}
+	}
 	if w.manager == nil {
 		w.visibleTunnels = nil
 		w.tunnelRows = nil

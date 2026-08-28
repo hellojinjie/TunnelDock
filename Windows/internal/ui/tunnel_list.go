@@ -14,6 +14,7 @@ type TunnelRows struct {
 
 type TunnelTableRow struct {
 	RuntimeID string
+	Host      string
 	Name      string
 	Forward   string
 	Status    string
@@ -47,6 +48,7 @@ func TunnelTableRows(runtimes []model.TunnelRuntime) []*TunnelTableRow {
 	for _, runtime := range runtimes {
 		rows = append(rows, &TunnelTableRow{
 			RuntimeID: runtime.ID,
+			Host:      runtime.Definition.HostAlias,
 			Name:      runtime.DisplayName(),
 			Forward:   fmt.Sprintf("%s:%d → %s:%d", runtime.Definition.LocalAddress, runtime.Definition.LocalPort, runtime.Definition.RemoteHost, runtime.Definition.RemotePort),
 			Status:    tunnelStateText(runtime.State),
