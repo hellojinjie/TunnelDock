@@ -9,7 +9,6 @@ import (
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
 	"github.com/hellojinjie/TunnelDock/Windows/internal/tunnel"
 	"github.com/tailscale/walk"
-	"github.com/tailscale/win"
 )
 
 // Window is the Windows-native TunnelDock shell. Its collections are custom
@@ -449,7 +448,7 @@ func (w *Window) onDelete(runtimeID string) {
 	if !exists || runtime.Temporary || runtime.State != model.StateDisconnected {
 		return
 	}
-	if walk.MsgBox(w, "Delete Tunnel", "Delete "+runtime.DisplayName()+"?", walk.MsgBoxYesNo|walk.MsgBoxIconWarning) != int(win.IDYES) {
+	if !ConfirmDeleteTunnel(w, w.env, runtime.DisplayName()) {
 		return
 	}
 	if err := w.manager.Delete(runtimeID); err != nil {
@@ -461,7 +460,7 @@ func (w *Window) onDelete(runtimeID string) {
 
 func (w *Window) onViewLog(runtimeID string) {
 	if w.manager != nil {
-		if err := ShowTunnelLog(w, w.manager, runtimeID); err != nil {
+		if err := ShowTunnelLog(w, w.env, w.manager, runtimeID); err != nil {
 			w.setStatus(err.Error(), true)
 		}
 	}
@@ -476,7 +475,7 @@ func (w *Window) runtime(runtimeID string) (model.TunnelRuntime, bool) {
 
 func (w *Window) showConnectionError(err error, hostAlias string) {
 	w.setStatus(PresentConnectionError(err).Summary, true)
-	ShowConnectionError(w, err, hostAlias)
+	ShowConnectionError(w, w.env, err, hostAlias)
 }
 
 func (w *Window) setStatus(message string, isError bool) {

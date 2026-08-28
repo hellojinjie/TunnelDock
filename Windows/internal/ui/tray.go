@@ -22,6 +22,19 @@ type Tray struct {
 	onQuit     func()
 }
 
+type SettingsPresentation struct {
+	ShowTrayIcon   bool
+	AppearanceText string
+}
+
+func PresentSettings(showTray bool, appearance Appearance) SettingsPresentation {
+	appearanceName := "Light"
+	if appearance == AppearanceDark {
+		appearanceName = "Dark"
+	}
+	return SettingsPresentation{ShowTrayIcon: showTray, AppearanceText: "Appearance follows Windows (" + appearanceName + ")"}
+}
+
 func NewTray(window *Window, controller *app.TrayController, manager *tunnel.Manager, onRefresh, onQuit func()) (*Tray, error) {
 	if window == nil || controller == nil {
 		return nil, fmt.Errorf("tray requires a window and settings controller")
@@ -72,59 +85,75 @@ func (t *Tray) OpenWindow() {
 }
 
 func (t *Tray) ShowSettings() {
-	dialog, err := walk.NewDialogWithFixedSize(t.window)
+	presentation := PresentSettings(t.controller.Visible(), t.window.Environment().Appearance())
+	shell, err := NewDialogShell(t.window, t.window.Environment(), DialogSpec{
+		Title: "TunnelDock Settings", Description: "Application behavior and appearance.",
+		PrimaryText: "Close", Size: walk.Size{Width: 440, Height: 280},
+	})
 	if err != nil {
 		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
 		return
 	}
-	defer dialog.Dispose()
-	_ = dialog.SetTitle("TunnelDock Settings")
-	_ = dialog.SetSize(walk.Size{Width: 360, Height: 130})
-	_ = dialog.SetLayout(walk.NewVBoxLayout())
-	showTray, err := walk.NewCheckBox(dialog)
+	defer shell.Dispose()
+	shell.Cancel.SetVisible(false)
+	layout := walk.NewVBoxLayout()
+	layout.SetMargins(walk.Margins{HNear: 14, VNear: 12, HFar: 14, VFar: 12})
+	layout.SetSpacing(10)
+	if err := shell.Content.SetLayout(layout); err != nil {
+		showDialogError(t.window, err)
+		return
+	}
+	showTray, err := walk.NewCheckBox(shell.Content)
 	if err != nil {
-		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
+		showDialogError(t.window, err)
 		return
 	}
 	_ = showTray.SetText("Show TunnelDock tray icon")
-	if t.controller.Visible() {
+	if presentation.ShowTrayIcon {
 		showTray.SetCheckState(walk.CheckChecked)
 	}
-	buttons, err := walk.NewComposite(dialog)
+	appearance, err := walk.NewLabel(shell.Content)
 	if err != nil {
-		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
+		showDialogError(t.window, err)
 		return
 	}
-	_ = buttons.SetLayout(walk.NewHBoxLayout())
-	save, err := walk.NewPushButton(buttons)
-	if err != nil {
-		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
-		return
+	_ = appearance.SetText(presentation.AppearanceText)
+	syncing := false
+	showTray.CheckStateChanged().Attach(func() {
+		if syncing {
+			return
+		}
+		previous := t.controller.Visible()
+		visible := showTray.CheckState() == walk.CheckChecked
+		if visible == previous {
+			return
+		}
+		if setErr := t.controller.SetVisible(visible); setErr != nil {
+			syncing = true
+			showTray.SetCheckState(checkState(previous))
+			syncing = false
+			shell.SetValidation(setErr.Error(), showTray)
+			return
+		}
+		if setErr := t.SetVisible(visible); setErr != nil {
+			_ = t.controller.SetVisible(previous)
+			syncing = true
+			showTray.SetCheckState(checkState(previous))
+			syncing = false
+			shell.SetValidation(setErr.Error(), showTray)
+			return
+		}
+		shell.SetValidation("", nil)
+	})
+	shell.Primary.Clicked().Attach(shell.Accept)
+	shell.Run()
+}
+
+func checkState(checked bool) walk.CheckState {
+	if checked {
+		return walk.CheckChecked
 	}
-	_ = save.SetText("Save")
-	save.Clicked().Attach(dialog.Accept)
-	cancel, err := walk.NewPushButton(buttons)
-	if err != nil {
-		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
-		return
-	}
-	_ = cancel.SetText("Cancel")
-	cancel.Clicked().Attach(dialog.Cancel)
-	if err := ApplyStandardTextScale(dialog); err != nil {
-		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
-		return
-	}
-	if dialog.Run() != walk.DlgCmdOK {
-		return
-	}
-	visible := showTray.CheckState() == walk.CheckChecked
-	if err := t.controller.SetVisible(visible); err != nil {
-		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
-		return
-	}
-	if err := t.SetVisible(visible); err != nil {
-		walk.MsgBox(t.window, "Settings", err.Error(), walk.MsgBoxIconError)
-	}
+	return walk.CheckUnchecked
 }
 
 func (t *Tray) rebuildMenu() {

@@ -35,67 +35,61 @@ func PresentConnectionError(err error) ConnectionErrorPresentation {
 	}
 }
 
-func ShowConnectionError(owner walk.Form, err error, hostAlias string) {
+func ShowConnectionError(owner walk.Form, env *UIEnvironment, err error, hostAlias string) {
 	presentation := PresentConnectionError(err)
-	dialog, createErr := walk.NewDialogWithFixedSize(owner)
+	shell, createErr := NewDialogShell(owner, env, DialogSpec{
+		Title: presentation.Title, Description: presentation.Summary,
+		PrimaryText: "Close", Size: walk.Size{Width: 640, Height: 440},
+	})
 	if createErr != nil {
-		showDialogError(owner, err)
+		showDialogError(owner, createErr)
 		return
 	}
-	defer dialog.Dispose()
-	_ = dialog.SetTitle(presentation.Title)
-	_ = dialog.SetSize(walk.Size{Width: 620, Height: 360})
-	if createErr = dialog.SetLayout(walk.NewVBoxLayout()); createErr != nil {
-		showDialogError(owner, err)
+	defer shell.Dispose()
+	shell.Cancel.SetVisible(false)
+	layout := walk.NewVBoxLayout()
+	layout.SetMargins(walk.Margins{HNear: 14, VNear: 12, HFar: 14, VFar: 12})
+	layout.SetSpacing(8)
+	if createErr = shell.Content.SetLayout(layout); createErr != nil {
+		showDialogError(owner, createErr)
 		return
 	}
-	for _, value := range []string{presentation.Summary, presentation.Action, "Technical details:"} {
-		label, labelErr := walk.NewLabel(dialog)
-		if labelErr != nil {
-			showDialogError(owner, err)
-			return
-		}
-		_ = label.SetText(value)
+	actionLabel, createErr := walk.NewLabel(shell.Content)
+	if createErr != nil {
+		showDialogError(owner, createErr)
+		return
 	}
-	details, detailsErr := walk.NewTextEdit(dialog)
-	if detailsErr != nil {
-		showDialogError(owner, err)
+	_ = actionLabel.SetText(presentation.Action)
+	detailsLabel, createErr := walk.NewLabel(shell.Content)
+	if createErr != nil {
+		showDialogError(owner, createErr)
+		return
+	}
+	_ = detailsLabel.SetText("Technical details")
+	details, createErr := walk.NewTextEdit(shell.Content)
+	if createErr != nil {
+		showDialogError(owner, createErr)
 		return
 	}
 	_ = details.SetReadOnly(true)
 	_ = details.SetText(presentation.Details)
-	_ = details.SetMinMaxSize(walk.Size{Width: 560, Height: 160}, walk.Size{Width: 560, Height: 160})
-	buttons, buttonsErr := walk.NewComposite(dialog)
-	if buttonsErr != nil {
-		showDialogError(owner, err)
-		return
-	}
-	_ = buttons.SetLayout(walk.NewHBoxLayout())
+	_ = details.SetMinMaxSize(walk.Size{Height: 150}, walk.Size{})
 	if presentation.RequiresInteractiveSSH && sshclient.CanStartInteractiveSSH(hostAlias) {
-		terminalButton, terminalErr := walk.NewPushButton(buttons)
+		terminalButton, terminalErr := walk.NewPushButton(shell.Content)
 		if terminalErr != nil {
-			showDialogError(owner, err)
+			showDialogError(owner, terminalErr)
 			return
 		}
-		_ = terminalButton.SetText("Open Terminal: " + sshclient.InteractiveSSHCommand(hostAlias))
+		_ = terminalButton.SetText("Open SSH Terminal")
+		terminalButton.SetToolTipText(sshclient.InteractiveSSHCommand(hostAlias))
 		terminalButton.Clicked().Attach(func() {
 			if startErr := sshclient.StartInteractiveSSH(hostAlias); startErr != nil {
-				showDialogError(dialog, startErr)
+				shell.SetValidation(startErr.Error(), terminalButton)
 				return
 			}
-			dialog.Accept()
+			shell.Accept()
 		})
 	}
-	closeButton, buttonErr := walk.NewPushButton(buttons)
-	if buttonErr != nil {
-		showDialogError(owner, err)
-		return
-	}
-	_ = closeButton.SetText("Close")
-	closeButton.Clicked().Attach(dialog.Accept)
-	if createErr = ApplyStandardTextScale(dialog); createErr != nil {
-		showDialogError(owner, err)
-		return
-	}
-	_ = dialog.Run()
+	shell.Primary.Clicked().Attach(shell.Accept)
+	shell.Run()
 }
