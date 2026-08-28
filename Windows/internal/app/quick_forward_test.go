@@ -24,10 +24,16 @@ func (c *recordingTemporaryConnector) ConnectTemporary(_ context.Context, defini
 
 func TestQuickForwardDefaultsAndLocalPortFollow(t *testing.T) {
 	quick := NewQuickForward()
+	if quick.HasRemotePort() {
+		t.Fatal("HasRemotePort() = true for an empty Quick Forward form")
+	}
 	if quick.RemoteHost != "127.0.0.1" || quick.LocalAddress != "127.0.0.1" || quick.WebProtocol != model.TunnelProtocolHTTP || quick.AdvancedExpanded {
 		t.Fatalf("defaults = %#v", quick)
 	}
 	quick.SetRemotePort("8888")
+	if !quick.HasRemotePort() {
+		t.Fatal("HasRemotePort() = false after a remote port was entered")
+	}
 	if quick.RemotePort != "8888" || quick.LocalPort != "8888" {
 		t.Fatalf("follow = %#v", quick)
 	}

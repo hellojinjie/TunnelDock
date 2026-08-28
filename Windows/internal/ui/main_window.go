@@ -338,8 +338,8 @@ func (w *Window) selectHost(host *model.SSHHost) {
 	if host == nil {
 		w.selectedHost = nil
 		_ = w.detailStatus.SetText("")
-		w.connectButton.SetEnabled(false)
 		w.quickSection.SetVisible(false)
+		w.updateQuickConnectEnabled()
 		_ = w.refreshTunnels()
 		return
 	}
@@ -351,11 +351,15 @@ func (w *Window) selectHost(host *model.SSHHost) {
 	}
 	_ = w.detailStatus.SetText(status)
 	w.quickSection.SetVisible(host.Availability == model.HostAvailable)
-	w.connectButton.SetEnabled(host.Availability == model.HostAvailable && w.manager != nil)
+	w.updateQuickConnectEnabled()
 	_ = w.refreshTunnels()
 }
 
-func (w *Window) onRemotePortChanged() { w.quick.SetRemotePort(w.remotePort.Text()); w.syncLocalPort() }
+func (w *Window) onRemotePortChanged() {
+	w.quick.SetRemotePort(w.remotePort.Text())
+	w.syncLocalPort()
+	w.updateQuickConnectEnabled()
+}
 func (w *Window) onLocalPortChanged() {
 	if !w.syncingForm {
 		w.quick.SetLocalPort(w.localPort.Text())
@@ -378,6 +382,10 @@ func (w *Window) syncLocalPort() {
 	w.syncingForm = true
 	_ = w.localPort.SetText(w.quick.LocalPort)
 	w.syncingForm = false
+}
+
+func (w *Window) updateQuickConnectEnabled() {
+	w.connectButton.SetEnabled(w.selectedHost != nil && w.selectedHost.Availability == model.HostAvailable && w.manager != nil && w.quick.HasRemotePort())
 }
 
 func (w *Window) toggleAdvanced() { w.advanced.SetVisible(!w.advanced.Visible()) }

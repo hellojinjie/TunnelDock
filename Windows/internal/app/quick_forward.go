@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
 )
@@ -52,6 +53,10 @@ func (q *QuickForward) SetLocalPort(value string) {
 }
 
 func (q *QuickForward) LocalPortFollowsRemote() bool { return q.localPortFollowsRemote }
+
+// HasRemotePort is the UI-ready readiness check used to keep Connect disabled
+// until the one required Quick Forward field has a value.
+func (q *QuickForward) HasRemotePort() bool { return strings.TrimSpace(q.RemotePort) != "" }
 
 func (q *QuickForward) HandlePortConflict() {
 	q.AdvancedExpanded = true
