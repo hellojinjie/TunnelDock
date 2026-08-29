@@ -190,6 +190,31 @@ func TestManagerConnectRecentPersistsSuccessfulQuickForward(t *testing.T) {
 	}
 }
 
+func TestManagerConnectRecentReusesMatchingSavedForward(t *testing.T) {
+	existing := managerDefinition("saved-1", "gpu", 9002)
+	existing.WebProtocol = model.TunnelProtocolHTTP
+	fixture := newManagerFixture(t, []model.TunnelDefinition{existing}, []error{nil})
+	input := managerDefinition("", "gpu", 9002)
+	input.WebProtocol = model.TunnelProtocolHTTPS
+
+	id, err := fixture.manager.ConnectRecent(context.Background(), input)
+	if err != nil {
+		t.Fatalf("ConnectRecent() error = %v", err)
+	}
+	if id != "saved-1" {
+		t.Fatalf("ConnectRecent() ID = %q, want saved-1", id)
+	}
+	if fixture.controller.startCount() != 1 {
+		t.Fatalf("process starts = %d, want 1", fixture.controller.startCount())
+	}
+	if snapshots := fixture.manager.Snapshots(); len(snapshots) != 1 || snapshots[0].ID != "saved-1" || snapshots[0].Definition.WebProtocol != model.TunnelProtocolHTTPS {
+		t.Fatalf("snapshots = %#v", snapshots)
+	}
+	if definitions := fixture.repository.snapshot(); len(definitions) != 1 || definitions[0].ID != "saved-1" || definitions[0].WebProtocol != model.TunnelProtocolHTTPS {
+		t.Fatalf("saved definitions = %#v", definitions)
+	}
+}
+
 func TestManagerSnapshotsListsSavedBeforeTemporary(t *testing.T) {
 	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{nil})
 	temporaryID, err := fixture.manager.ConnectTemporary(context.Background(), managerDefinition("", "gpu", 9001))
@@ -226,6 +251,36 @@ func TestManagerRenameAllowsRunningSavedTunnelAndDeleteRejectsIt(t *testing.T) {
 	}
 	if _, exists := fixture.manager.Snapshot("saved-1"); exists {
 		t.Fatal("deleted saved runtime remained")
+	}
+}
+
+func TestManagerDeleteAllowsFailedSavedTunnel(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, []error{errors.New("not ready")})
+	if err := fixture.manager.ConnectSaved(context.Background(), "saved-1"); err == nil {
+		t.Fatal("ConnectSaved() error = nil")
+	}
+	if err := fixture.manager.Delete("saved-1"); err != nil {
+		t.Fatalf("Delete() failed tunnel error = %v", err)
+	}
+	if _, exists := fixture.manager.Snapshot("saved-1"); exists {
+		t.Fatal("deleted failed runtime remained")
+	}
+	if definitions := fixture.repository.snapshot(); len(definitions) != 0 {
+		t.Fatalf("saved definitions = %#v, want none", definitions)
+	}
+}
+
+func TestManagerDeleteRestoresRuntimeWhenPersistenceFails(t *testing.T) {
+	fixture := newManagerFixture(t, []model.TunnelDefinition{managerDefinition("saved-1", "gpu", 9000)}, nil)
+	fixture.repository.replaceErr = errors.New("disk full")
+	if err := fixture.manager.Delete("saved-1"); err == nil {
+		t.Fatal("Delete() error = nil")
+	}
+	if snapshot, exists := fixture.manager.Snapshot("saved-1"); !exists || snapshot.ID != "saved-1" {
+		t.Fatalf("restored snapshot = %#v, exists = %v", snapshot, exists)
+	}
+	if snapshots := fixture.manager.Snapshots(); len(snapshots) != 1 || snapshots[0].ID != "saved-1" {
+		t.Fatalf("snapshot order = %#v", snapshots)
 	}
 }
 
@@ -367,6 +422,7 @@ func eventually(t *testing.T, predicate func() bool) {
 type fakeDefinitionRepository struct {
 	mu          sync.Mutex
 	definitions []model.TunnelDefinition
+	replaceErr  error
 }
 
 func (r *fakeDefinitionRepository) Load() ([]model.TunnelDefinition, error) {
@@ -377,6 +433,9 @@ func (r *fakeDefinitionRepository) Load() ([]model.TunnelDefinition, error) {
 func (r *fakeDefinitionRepository) ReplaceAll(values []model.TunnelDefinition) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.replaceErr != nil {
+		return r.replaceErr
+	}
 	r.definitions = append([]model.TunnelDefinition(nil), values...)
 	return nil
 }

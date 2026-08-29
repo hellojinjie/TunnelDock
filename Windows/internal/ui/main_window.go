@@ -469,7 +469,7 @@ func (w *Window) onEdit(runtimeID string) {
 
 func (w *Window) onDelete(runtimeID string) {
 	runtime, exists := w.runtime(runtimeID)
-	if !exists || runtime.Temporary || runtime.State != model.StateDisconnected {
+	if !exists || runtime.Temporary || !canDeleteTunnelState(runtime.State) {
 		return
 	}
 	if !ConfirmDeleteTunnel(w, w.env, runtime.DisplayName()) {
@@ -480,6 +480,10 @@ func (w *Window) onDelete(runtimeID string) {
 	} else {
 		_ = w.refreshTunnels()
 	}
+}
+
+func canDeleteTunnelState(state model.TunnelState) bool {
+	return state == model.StateDisconnected || state == model.StateFailed
 }
 
 func (w *Window) onViewLog(runtimeID string) {

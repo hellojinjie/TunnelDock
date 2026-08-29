@@ -37,3 +37,20 @@ func TestOpenBrowserDelegatesToWindowsShell(t *testing.T) {
 		t.Fatalf("shell URL = %q", got)
 	}
 }
+
+func TestCanDeleteTunnelStateMatchesRecentTunnelMenu(t *testing.T) {
+	for _, test := range []struct {
+		state model.TunnelState
+		want  bool
+	}{
+		{state: model.StateDisconnected, want: true},
+		{state: model.StateFailed, want: true},
+		{state: model.StateConnecting, want: false},
+		{state: model.StateConnected, want: false},
+		{state: model.StateReconnecting, want: false},
+	} {
+		if got := canDeleteTunnelState(test.state); got != test.want {
+			t.Fatalf("canDeleteTunnelState(%v) = %v, want %v", test.state, got, test.want)
+		}
+	}
+}

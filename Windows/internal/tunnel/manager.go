@@ -193,6 +193,22 @@ func (m *Manager) ConnectTemporary(ctx context.Context, definition model.TunnelD
 // after its first successful connection. A recent tunnel remains available for
 // later reconnects even after it is disconnected or TunnelDock restarts.
 func (m *Manager) ConnectRecent(ctx context.Context, definition model.TunnelDefinition) (string, error) {
+	if err := definition.Validate(); err != nil {
+		return "", err
+	}
+	if id, previous, wasActive, found := m.prepareMatchingRecent(definition); found {
+		if err := m.ConnectSaved(ctx, id); err != nil {
+			m.restoreDefinition(id, previous)
+			return "", err
+		}
+		if wasActive {
+			if err := m.persistDefinitions(); err != nil {
+				m.restoreDefinition(id, previous)
+				return id, err
+			}
+		}
+		return id, nil
+	}
 	id, err := m.ConnectTemporary(ctx, definition)
 	if err != nil {
 		return "", err
@@ -201,6 +217,42 @@ func (m *Manager) ConnectRecent(ctx context.Context, definition model.TunnelDefi
 		return id, err
 	}
 	return id, nil
+}
+
+func (m *Manager) prepareMatchingRecent(definition model.TunnelDefinition) (string, model.TunnelDefinition, bool, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, id := range m.savedOrder {
+		runtime, exists := m.runtimes[id]
+		if !exists || runtime.temporary || !sameForward(runtime.definition, definition) {
+			continue
+		}
+		previous := runtime.definition
+		runtime.definition.WebProtocol = definition.WebProtocol
+		if definition.Name != nil {
+			runtime.definition.Name = definition.Name
+		}
+		runtime.definition.UpdatedAt = m.now()
+		active := runtime.state == model.StateConnecting || runtime.state == model.StateConnected || runtime.state == model.StateReconnecting
+		return id, previous, active, true
+	}
+	return "", model.TunnelDefinition{}, false, false
+}
+
+func (m *Manager) restoreDefinition(id string, definition model.TunnelDefinition) {
+	m.mu.Lock()
+	if runtime := m.runtimes[id]; runtime != nil {
+		runtime.definition = definition
+	}
+	m.mu.Unlock()
+}
+
+func sameForward(left, right model.TunnelDefinition) bool {
+	return left.HostAlias == right.HostAlias &&
+		left.LocalAddress == right.LocalAddress &&
+		left.LocalPort == right.LocalPort &&
+		left.RemoteHost == right.RemoteHost &&
+		left.RemotePort == right.RemotePort
 }
 
 func (m *Manager) connectInitial(_ context.Context, id string) error {
@@ -628,10 +680,11 @@ func (m *Manager) Delete(id string) error {
 		m.mu.Unlock()
 		return ErrTunnelNotFound
 	}
-	if runtime.state != model.StateDisconnected {
+	if runtime.state != model.StateDisconnected && runtime.state != model.StateFailed {
 		m.mu.Unlock()
 		return ErrTunnelRunning
 	}
+	previousOrder := append([]string(nil), m.savedOrder...)
 	delete(m.runtimes, id)
 	for index, savedID := range m.savedOrder {
 		if savedID == id {
@@ -640,7 +693,14 @@ func (m *Manager) Delete(id string) error {
 		}
 	}
 	m.mu.Unlock()
-	return m.persistDefinitions()
+	if err := m.persistDefinitions(); err != nil {
+		m.mu.Lock()
+		m.runtimes[id] = runtime
+		m.savedOrder = previousOrder
+		m.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 func (m *Manager) Snapshot(id string) (model.TunnelRuntime, bool) {
