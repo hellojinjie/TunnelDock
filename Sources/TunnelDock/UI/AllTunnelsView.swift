@@ -26,7 +26,8 @@ struct AllTunnelsView: View {
                                 TunnelRow(
                                     snapshot: tunnel,
                                     manager: tunnelManager,
-                                    canConnect: canConnect(tunnel)
+                                    canConnect: canConnect(tunnel),
+                                    showsHostAlias: true
                                 )
                                 if tunnel.id != tunnels.last?.id { Divider() }
                             }
