@@ -157,7 +157,7 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 	); err != nil {
 		return fail(err)
 	}
-	window.settingsButton, err = NewIconButton(settingsHost, env, IconSettings, "Settings", nil)
+	window.settingsButton, err = NewIconButton(settingsHost, env, iconButtonOnWindow, IconSettings, "Settings", nil)
 	if err != nil {
 		return fail(err)
 	}

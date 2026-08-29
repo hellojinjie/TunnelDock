@@ -7,15 +7,60 @@ import (
 
 type IconButton struct {
 	*walk.CustomWidget
-	env     *UIEnvironment
-	icon    IconKind
-	pressed bool
-	hovered bool
-	onClick func()
+	env                   *UIEnvironment
+	icon                  IconKind
+	surface               iconButtonSurface
+	pressed               bool
+	hovered               bool
+	keyboardFocus         bool
+	settingFocusWithMouse bool
+	onClick               func()
 }
 
-func NewIconButton(parent walk.Container, env *UIEnvironment, icon IconKind, tooltip string, onClick func()) (*IconButton, error) {
-	button := &IconButton{env: env, icon: icon, onClick: onClick}
+type iconButtonSurface uint8
+
+const (
+	iconButtonOnWindow iconButtonSurface = iota
+	iconButtonOnSidebar
+)
+
+type iconButtonBase uint8
+
+const (
+	iconButtonBaseWindow iconButtonBase = iota
+	iconButtonBaseSidebar
+)
+
+type iconButtonOverlay uint8
+
+const (
+	iconButtonOverlayNone iconButtonOverlay = iota
+	iconButtonOverlayHover
+	iconButtonOverlayPressed
+)
+
+type iconButtonVisual struct {
+	Base         iconButtonBase
+	Overlay      iconButtonOverlay
+	OverlayInset int
+	ShowFocus    bool
+}
+
+func iconButtonPresentation(surface iconButtonSurface, hovered, pressed, focused, keyboardFocus bool) iconButtonVisual {
+	visual := iconButtonVisual{Base: iconButtonBaseWindow, OverlayInset: 2, ShowFocus: focused && keyboardFocus}
+	if surface == iconButtonOnSidebar {
+		visual.Base = iconButtonBaseSidebar
+	}
+	if pressed {
+		visual.Overlay = iconButtonOverlayPressed
+	} else if hovered {
+		visual.Overlay = iconButtonOverlayHover
+	}
+	return visual
+}
+
+func NewIconButton(parent walk.Container, env *UIEnvironment, surface iconButtonSurface, icon IconKind, tooltip string, onClick func()) (*IconButton, error) {
+	button := &IconButton{env: env, icon: icon, surface: surface, onClick: onClick}
 	custom, err := walk.NewCustomWidgetPixels(parent, uint(win.WS_TABSTOP), func(canvas *walk.Canvas, bounds walk.Rectangle) error {
 		return button.paint(canvas, bounds)
 	})
@@ -46,7 +91,10 @@ func NewIconButton(parent walk.Container, env *UIEnvironment, icon IconKind, too
 	button.MouseDown().Attach(func(_, _ int, mouseButton walk.MouseButton) {
 		if mouseButton == walk.LeftButton && button.Enabled() {
 			button.pressed = true
+			button.keyboardFocus = false
+			button.settingFocusWithMouse = true
 			_ = button.SetFocus()
+			button.settingFocusWithMouse = false
 			button.Invalidate()
 		}
 	})
@@ -64,7 +112,14 @@ func NewIconButton(parent walk.Container, env *UIEnvironment, icon IconKind, too
 			button.onClick()
 		}
 	})
-	button.FocusedChanged().Attach(func() { button.Invalidate() })
+	button.FocusedChanged().Attach(func() {
+		if !button.Focused() {
+			button.keyboardFocus = false
+		} else if !button.settingFocusWithMouse {
+			button.keyboardFocus = true
+		}
+		button.Invalidate()
+	})
 	return button, nil
 }
 
@@ -80,17 +135,25 @@ func (b *IconButton) paint(canvas *walk.Canvas, _ walk.Rectangle) error {
 		return err
 	}
 	bounds := b.ClientBoundsPixels()
-	brush := resources.SurfaceBrush
-	if err := canvas.FillRectanglePixels(resources.SurfaceBrush, bounds); err != nil {
+	visual := iconButtonPresentation(b.surface, b.hovered, b.pressed, b.Focused(), b.keyboardFocus)
+	baseBrush := resources.WindowBrush
+	if visual.Base == iconButtonBaseSidebar {
+		baseBrush = resources.SidebarBrush
+	}
+	if err := canvas.FillRectanglePixels(baseBrush, bounds); err != nil {
 		return err
 	}
-	if b.pressed {
-		brush = resources.SelectedBrush
-	} else if b.hovered {
-		brush = resources.HoverBrush
+	var overlay walk.Brush
+	switch visual.Overlay {
+	case iconButtonOverlayHover:
+		overlay = resources.HoverBrush
+	case iconButtonOverlayPressed:
+		overlay = resources.SelectedBrush
 	}
-	if err := FillRoundedSurface(canvas, brush, bounds, resources.Metrics.RowRadius); err != nil {
-		return err
+	if overlay != nil {
+		if err := FillRoundedSurface(canvas, overlay, insetRect(bounds, visual.OverlayInset), resources.Metrics.RowRadius); err != nil {
+			return err
+		}
 	}
 	color := resources.Palette.SecondaryText
 	if !b.Enabled() {
@@ -100,8 +163,8 @@ func (b *IconButton) paint(canvas *walk.Canvas, _ walk.Rectangle) error {
 	if err := DrawIcon(canvas, resources, b.icon, iconBounds, color); err != nil {
 		return err
 	}
-	if b.Focused() {
-		return DrawFocusRing(canvas, resources, insetRect(bounds, 1), resources.Metrics.RowRadius)
+	if visual.ShowFocus {
+		return DrawFocusRing(canvas, resources, insetRect(bounds, 2), resources.Metrics.RowRadius)
 	}
 	return nil
 }

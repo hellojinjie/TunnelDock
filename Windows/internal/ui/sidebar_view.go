@@ -128,7 +128,7 @@ func NewSidebarView(parent walk.Container, env *UIEnvironment, callbacks Sidebar
 		{IconEdit, "Open SSH config", callbacks.EditConfig},
 		{IconRefresh, "Refresh SSH config", callbacks.Refresh},
 	} {
-		_, buttonErr := NewIconButton(toolbar, env, action.icon, action.tip, action.fn)
+		_, buttonErr := NewIconButton(toolbar, env, iconButtonOnSidebar, action.icon, action.tip, action.fn)
 		if buttonErr != nil {
 			return fail(buttonErr)
 		}
