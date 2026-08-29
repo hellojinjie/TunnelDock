@@ -30,10 +30,11 @@ type UIResources struct {
 	SelectedBrush *walk.SolidColorBrush
 	BorderPen     *walk.CosmeticPen
 	FocusPen      *walk.CosmeticPen
+	iconBitmaps   map[iconBitmapKey]*walk.Bitmap
 }
 
 func newUIResources(appearance Appearance, dpi int) (*UIResources, error) {
-	resources := &UIResources{Appearance: appearance, DPI: dpi, Palette: PaletteFor(appearance), Metrics: MetricsForDPI(dpi)}
+	resources := &UIResources{Appearance: appearance, DPI: dpi, Palette: PaletteFor(appearance), Metrics: MetricsForDPI(dpi), iconBitmaps: make(map[iconBitmapKey]*walk.Bitmap)}
 	var err error
 	if resources.BodyFont, err = walk.NewFont("Segoe UI", 11, walk.FontNormal); err != nil {
 		resources.Dispose()
@@ -101,6 +102,10 @@ func (r *UIResources) Dispose() {
 			pen.Dispose()
 		}
 	}
+	for _, bitmap := range r.iconBitmaps {
+		bitmap.Dispose()
+	}
+	r.iconBitmaps = nil
 }
 
 type UIEnvironment struct {

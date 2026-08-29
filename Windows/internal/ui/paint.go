@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"math"
+	"image/color"
 
 	"github.com/tailscale/walk"
 )
@@ -40,93 +40,27 @@ func DrawTextEllipsized(canvas *walk.Canvas, text string, font *walk.Font, color
 	return canvas.DrawTextPixels(text, font, color, bounds, walk.TextSingleLine|walk.TextVCenter|walk.TextEndEllipsis|walk.TextNoPrefix)
 }
 
-func DrawIcon(canvas *walk.Canvas, resources *UIResources, kind IconKind, bounds walk.Rectangle, color walk.Color) error {
-	brush, err := walk.NewSolidColorBrush(color)
-	if err != nil {
-		return err
-	}
-	defer brush.Dispose()
-	pen, err := walk.NewGeometricPen(walk.PenSolid|walk.PenCapRound|walk.PenJoinRound, defaultIconStrokeWidth96DPI, brush)
-	if err != nil {
-		return err
-	}
-	defer pen.Dispose()
-	inversePen, err := walk.NewGeometricPen(walk.PenSolid|walk.PenCapRound|walk.PenJoinRound, defaultIconStrokeWidth96DPI, resources.SurfaceBrush)
-	if err != nil {
-		return err
-	}
-	defer inversePen.Dispose()
-
-	geometry := buildIconGeometry(kind)
-	for _, rect := range geometry.RoundedRects {
-		if err := canvas.DrawRoundedRectanglePixels(pen, mapIconRect(rect, bounds), mapIconSize(rect.Radius*2, rect.Radius*2, bounds)); err != nil {
+func DrawIcon(canvas *walk.Canvas, resources *UIResources, kind IconKind, bounds walk.Rectangle, tint walk.Color) error {
+	key := iconBitmapKey{kind: kind, width: bounds.Width, height: bounds.Height, color: tint}
+	bitmap := resources.iconBitmaps[key]
+	if bitmap == nil {
+		pixels, err := rasterizeFluentIcon(kind, bounds.Width, bounds.Height, color.RGBA{R: tint.R(), G: tint.G(), B: tint.B(), A: 0xff})
+		if err != nil {
 			return err
 		}
-	}
-	for _, rect := range geometry.Ellipses {
-		if err := canvas.DrawEllipsePixels(pen, mapIconRect(rect, bounds)); err != nil {
+		bitmap, err = walk.NewBitmapFromImageForDPI(pixels, canvas.DPI())
+		if err != nil {
 			return err
 		}
+		resources.iconBitmaps[key] = bitmap
 	}
-	for _, rect := range geometry.FilledEllipses {
-		if err := canvas.FillEllipsePixels(brush, mapIconRect(rect, bounds)); err != nil {
-			return err
-		}
-	}
-	for _, path := range geometry.Paths {
-		if err := drawIconPath(canvas, pen, path, bounds); err != nil {
-			return err
-		}
-	}
-	for _, path := range geometry.InversePaths {
-		if err := drawIconPath(canvas, inversePen, path, bounds); err != nil {
-			return err
-		}
-	}
-	for _, rect := range geometry.InverseFilledEllipses {
-		if err := canvas.FillEllipsePixels(resources.SurfaceBrush, mapIconRect(rect, bounds)); err != nil {
-			return err
-		}
-	}
-	return nil
+	return canvas.DrawImagePixels(bitmap, walk.Point{X: bounds.X, Y: bounds.Y})
 }
 
-func drawIconPath(canvas *walk.Canvas, pen walk.Pen, path iconPath, bounds walk.Rectangle) error {
-	if len(path.Points) < 2 {
-		return nil
-	}
-	points := make([]walk.Point, 0, len(path.Points)+1)
-	for _, point := range path.Points {
-		points = append(points, mapIconPoint(point, bounds))
-	}
-	if path.Closed {
-		points = append(points, points[0])
-	}
-	return canvas.DrawPolylinePixels(pen, points)
-}
-
-func mapIconPoint(point iconPoint, bounds walk.Rectangle) walk.Point {
-	return walk.Point{
-		X: bounds.X + int(math.Round(point.X/iconViewBox*float64(bounds.Width))),
-		Y: bounds.Y + int(math.Round(point.Y/iconViewBox*float64(bounds.Height))),
-	}
-}
-
-func mapIconRect(rect iconRect, bounds walk.Rectangle) walk.Rectangle {
-	topLeft := mapIconPoint(iconPoint{X: rect.X, Y: rect.Y}, bounds)
-	return walk.Rectangle{
-		X:      topLeft.X,
-		Y:      topLeft.Y,
-		Width:  max(1, int(math.Round(rect.Width/iconViewBox*float64(bounds.Width)))),
-		Height: max(1, int(math.Round(rect.Height/iconViewBox*float64(bounds.Height)))),
-	}
-}
-
-func mapIconSize(width, height float64, bounds walk.Rectangle) walk.Size {
-	return walk.Size{
-		Width:  max(1, int(math.Round(width/iconViewBox*float64(bounds.Width)))),
-		Height: max(1, int(math.Round(height/iconViewBox*float64(bounds.Height)))),
-	}
+type iconBitmapKey struct {
+	kind          IconKind
+	width, height int
+	color         walk.Color
 }
 
 func insetRect(bounds walk.Rectangle, inset int) walk.Rectangle {
