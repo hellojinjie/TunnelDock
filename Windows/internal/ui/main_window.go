@@ -54,6 +54,12 @@ func NewMainWindowWithEnvironment(applicationModel *app.Model, manager *tunnel.M
 	if err != nil {
 		return nil, err
 	}
+	// walk.MainWindow posts WM_QUIT and terminates the message loop on every
+	// WM_CLOSE, regardless of whether a Closing handler cancels the close
+	// (canceling only skips native disposal, not this). Disabling it here is
+	// what makes *cancel = true in Closing() actually keep the app alive;
+	// application exit must instead go through an explicit walk.App().Exit().
+	mainWindow.SetExitOnClose(false)
 	window := &Window{MainWindow: mainWindow, model: applicationModel, quick: app.NewQuickForward(), manager: manager, env: env, allTunnelsSelected: true}
 	fail := func(cause error) (*Window, error) {
 		window.Dispose()

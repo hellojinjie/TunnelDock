@@ -16,6 +16,23 @@ type HostRowWidget struct {
 	onActivate   func(string)
 }
 
+type hostRowHoverTransition struct {
+	hovered        bool
+	pressed        bool
+	capture        bool
+	releaseCapture bool
+}
+
+func (state hostRowHoverTransition) pointerMoved(inside bool) hostRowHoverTransition {
+	state.capture = inside && !state.hovered
+	state.releaseCapture = !inside && state.hovered
+	state.hovered = inside
+	if !inside {
+		state.pressed = false
+	}
+	return state
+}
+
 func NewHostRowWidget(parent walk.Container, env *UIEnvironment, row HostRowPresentation, activate func(string)) (*HostRowWidget, error) {
 	widget := &HostRowWidget{env: env, presentation: row, onActivate: activate}
 	custom, err := walk.NewCustomWidgetPixels(parent, uint(win.WS_TABSTOP), func(canvas *walk.Canvas, bounds walk.Rectangle) error {
@@ -31,9 +48,18 @@ func NewHostRowWidget(parent walk.Container, env *UIEnvironment, row HostRowPres
 		widget.Dispose()
 		return nil, err
 	}
-	widget.MouseMove().Attach(func(_, _ int, _ walk.MouseButton) {
-		if !widget.hovered {
-			widget.hovered = true
+	widget.MouseMove().Attach(func(x, y int, _ walk.MouseButton) {
+		bounds := widget.ClientBoundsPixels()
+		inside := x >= 0 && y >= 0 && x < bounds.Width && y < bounds.Height
+		previousHovered, previousPressed := widget.hovered, widget.pressed
+		state := (hostRowHoverTransition{hovered: widget.hovered, pressed: widget.pressed}).pointerMoved(inside)
+		widget.hovered, widget.pressed = state.hovered, state.pressed
+		if state.capture {
+			win.SetCapture(widget.Handle())
+		} else if state.releaseCapture {
+			win.ReleaseCapture()
+		}
+		if previousHovered != widget.hovered || previousPressed != widget.pressed {
 			widget.Invalidate()
 		}
 	})

@@ -92,7 +92,10 @@ func main() {
 	)
 	mainWindow.Closing().Attach(func(cancel *bool, _ walk.CloseReason) {
 		if !quitting {
-			tray.MinimizeOnClose(cancel)
+			if tray.HandleWindowClose(cancel) {
+				quitting = true
+				walk.App().Exit(0)
+			}
 		}
 	})
 	watchContext, cancelWatch := context.WithCancel(context.Background())

@@ -8,7 +8,6 @@ import (
 	"github.com/hellojinjie/TunnelDock/Windows/internal/model"
 	"github.com/hellojinjie/TunnelDock/Windows/internal/tunnel"
 	"github.com/tailscale/walk"
-	"github.com/tailscale/win"
 )
 
 // Tray owns the native notification icon and its Windows-only menu. It never
@@ -203,13 +202,4 @@ func (t *Tray) toggleTunnel(id string, connect bool) {
 		_ = t.window.refreshTunnels()
 		t.rebuildMenu()
 	})
-}
-
-func (t *Tray) MinimizeOnClose(cancel *bool) {
-	*cancel = true
-	if t.Visible() {
-		t.window.SetVisible(false)
-		return
-	}
-	win.ShowWindow(t.window.Handle(), win.SW_MINIMIZE)
 }
