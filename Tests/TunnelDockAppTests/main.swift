@@ -10,6 +10,7 @@ let tests = PlaceholderTests.all
     + SSHConfigEditorOpenerTests.all
     + MenuBarModelTests.all
     + TunnelOverviewSortTests.all
+    + TunnelRowPresentationTests.all
     + AppTerminationCoordinatorTests.all
     + SidebarSearchFieldConfigurationTests.all
 let status = await TestRunner.run(tests, filter: filter)

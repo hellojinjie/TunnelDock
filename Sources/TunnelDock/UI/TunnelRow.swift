@@ -1,11 +1,13 @@
 import AppKit
 import SwiftUI
+import TunnelDockAppSupport
 import TunnelDockCore
 
 struct TunnelRow: View {
     let snapshot: TunnelRuntimeSnapshot
     @ObservedObject var manager: TunnelManager
     let canConnect: Bool
+    var showsHostAlias = false
     @State private var isWorking = false
     @State private var presentedSheet: PresentedSheet?
     @State private var errorMessage: String?
@@ -33,9 +35,23 @@ struct TunnelRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(snapshot.displayName)
                     .fontWeight(.medium)
-                Text("\(snapshot.localAddress):\(snapshot.localPort) → \(snapshot.remoteHost):\(snapshot.remotePort)")
+                HStack(spacing: 6) {
+                    if let hostAlias = TunnelRowPresentation.hostBadgeTitle(
+                        for: snapshot,
+                        showsHostAlias: showsHostAlias
+                    ) {
+                        Text(hostAlias)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.12), in: Capsule())
+                    }
+                    Text(TunnelRowPresentation.subtitle(for: snapshot))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                }
                 if let error = snapshot.lastError {
                     Text(error).font(.caption).foregroundStyle(.red)
                 } else if let errorMessage {
